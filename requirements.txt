@@ -6,11 +6,14 @@ numpy>=2.0
 pydantic>=2.0
 PyYAML>=6.0
 
+# M3 - environment
+gymnasium>=0.29
+pettingzoo>=1.24
+
 # tests
 pytest>=8.0
 
 # --- added in later modules ---
-# M3  gymnasium, pettingzoo
 # M4  scikit-learn
 # M5  torch
 # M8  matplotlib

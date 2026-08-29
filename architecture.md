@@ -60,6 +60,14 @@ side-effect class (`read_sensitive`, `read_benign`, `transform`, `write_local`,
    - `quarantine` → session terminates
 3. Env updates state; repeat until quarantine, task completion, or step cap.
 
+**M3 implementation notes.** Agents are `red_0` / `blue_0` (PettingZoo AEC; one MCP step =
+two AEC turns). Red's action is a **tool index only** — the env applies M2's
+most-recent-artifact default, which covers the canonical chain and every family (verified);
+a structured data-flow action is a later extension. Red's `Discrete` space is fixed at
+`n_tools_max` and out-of-range indices wrap; `registry_mask` in Red's obs marks the valid
+range. `SingleAgentARENA` is the Gym single-agent view used for PPO and the exploitability
+sweep. See [docs/m3-environment.md](docs/m3-environment.md).
+
 ## 4. Ground truth vs. observation — the anti-leakage rule
 
 The env maintains an internal **taint graph**: which data originated from a sensitive

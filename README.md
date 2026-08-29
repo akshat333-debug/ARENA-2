@@ -24,9 +24,9 @@ attacks that *don't even adapt*. ARENA measures what happens when the attacker l
 | Module | State |
 |---|---|
 | **M1** — config, tools, scenarios | ✅ done |
-| **M2** — taint tracker, reward engine | ✅ done — 139 tests passing |
-| M3 — PettingZoo env | next |
-| M4 — features, baselines | pending |
+| **M2** — taint tracker, reward engine | ✅ done |
+| **M3** — PettingZoo env + Gym wrapper | ✅ done — 173 tests passing |
+| M4 — features, baselines | next |
 | M5–M11 | pending |
 
 ## Install
@@ -92,6 +92,33 @@ tr.attack_path(scenario.objective)           # (0, 1, 2) - ground-truth maliciou
   for false quarantines and off-chain flags.
 - Every family has a verified minimal winning sequence in its own registry — checked in
   `tests/test_m2_integration.py`, so no episode is unwinnable by construction.
+
+## What M3 gives you
+
+```python
+from arena.env import ARENAEnv, SingleAgentARENA, RED, ALLOW, QUARANTINE
+from arena.config import load_config
+
+env = ARENAEnv(load_config("small.yaml"))   # PettingZoo AEC: agents "red_0", "blue_0"
+env.reset(seed=0)
+# red_0 picks a tool index; blue_0 returns allow / flag / quarantine on the sequence
+
+# single-agent view for PPO / exploitability: train Red vs a frozen Blue policy
+gym_env = SingleAgentARENA(RED, opponent=frozen_blue_policy, config=load_config("small.yaml"))
+```
+
+- **PettingZoo AEC env** — one episode = one MCP session. Passes `pettingzoo.test.api_test`.
+  Red proposes tool calls (index into the episode registry); Blue adjudicates the whole
+  sequence. Ends on quarantine, objective completion, or step cap.
+- **Anti-leakage invariant enforced** — Blue's observation is built from observable call
+  metadata only and is provably invariant to the internal taint graph
+  (`tests/test_env.py`). Two episodes with the same tool sequence but different objectives
+  give Blue byte-identical observations.
+- **Gymnasium single-agent wrapper** — `SingleAgentARENA` drives one side with a frozen
+  policy and exposes the other as a standard `gym.Env`. This is the M8 exploitability
+  primitive: freeze Blue, train a fresh best-response Red, measure success rate.
+- Headline claim demonstrated in `tests/test_m3_integration.py`: a sequence-aware Blue
+  stops the split-chain exfiltration that a per-call Blue allows through.
 
 ## Configuration
 
