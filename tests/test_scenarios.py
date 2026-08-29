@@ -153,8 +153,8 @@ def test_single_domain_generator():
 
 
 def test_minimum_registry_size_still_generates_all_families():
-    gen = ScenarioGenerator(seed=0, n_tools_min=3, n_tools_max=3)
+    gen = ScenarioGenerator(seed=0, n_tools_min=4, n_tools_max=4)
     for family in ALL_FAMILIES:
         sc = gen.sample(force_family=family)
-        assert len(sc.registry) == 3
+        assert len(sc.registry) == 4
         assert sc.objective is not None

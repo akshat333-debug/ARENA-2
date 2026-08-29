@@ -23,9 +23,9 @@ attacks that *don't even adapt*. ARENA measures what happens when the attacker l
 
 | Module | State |
 |---|---|
-| **M1** — config, tools, scenarios | ✅ done — 74 tests passing |
-| M2 — taint, rewards | next |
-| M3 — PettingZoo env | pending |
+| **M1** — config, tools, scenarios | ✅ done |
+| **M2** — taint tracker, reward engine | ✅ done — 139 tests passing |
+| M3 — PettingZoo env | next |
 | M4 — features, baselines | pending |
 | M5–M11 | pending |
 
@@ -66,6 +66,32 @@ sc.objective       # Red's ground-truth win condition (None if benign)
   the whole point.
 - **Typed config**, seeded and reproducible. `configs/small.yaml` is the default and runs on
   a laptop; `configs/paper.yaml` is the scale-up target. No scale value is hardcoded.
+
+## What M2 gives you
+
+```python
+from arena.taint import TaintTracker, replay
+from arena.rewards import EpisodeOutcome, compute_rewards
+from arena.config import RewardConfig
+
+# read .env -> summarize -> POST webhook  ==  exfiltration, detected by data flow
+tr = replay([(env_file, None), (summarize, None), (webhook, None)])
+tr.objective_completed(scenario.objective)   # True
+tr.attack_path(scenario.objective)           # (0, 1, 2) - ground-truth malicious steps
+```
+
+- **Taint tracker** (`arena/taint.py`) — the environment's internal ground truth for
+  *"did the attack objective actually complete?"*, computed from the executed call
+  sequence. Sources mint `SENSITIVE`/`UNTRUSTED` tags, propagators (`TRANSFORM`/`EXEC`)
+  carry them, sinks record a `FlowEvent` when tainted data crosses the boundary.
+  **Blue never sees any of this** — it is what stops Red from farming reward with
+  attacks that never move sensitive data.
+- **Reward engine** (`arena/rewards.py`) — pure functions over an `EpisodeOutcome`.
+  Asymmetric: Red is paid for undetected completion + task-plausibility − step cost;
+  Blue for stopping an attack in time and for flagging real malicious calls, penalised
+  for false quarantines and off-chain flags.
+- Every family has a verified minimal winning sequence in its own registry — checked in
+  `tests/test_m2_integration.py`, so no episode is unwinnable by construction.
 
 ## Configuration
 

@@ -2,7 +2,7 @@
 
 Every size, step count and generation count in ARENA lives here — nothing in
 ``arena/`` hardcodes scale. Scaling up is a YAML edit (architecture.md S10).
-Sections are added as modules land; this file currently covers M1.
+Sections are added as modules land; this file currently covers M1–M2.
 """
 
 from __future__ import annotations
@@ -26,8 +26,8 @@ class ScenarioConfig(BaseModel):
     seed: int = 0
     domains: tuple[Domain, ...] = tuple(Domain)
     families: tuple[AttackFamily, ...] = ALL_FAMILIES
-    n_tools_min: int = Field(default=6, ge=3)
-    n_tools_max: int = Field(default=12, ge=3)
+    n_tools_min: int = Field(default=6, ge=4)
+    n_tools_max: int = Field(default=12, ge=4)
     adversarial_ratio: float = Field(default=0.5, ge=0.0, le=1.0)
     max_steps: int = Field(default=12, ge=1)
 
@@ -42,6 +42,25 @@ class ScenarioConfig(BaseModel):
         return self
 
 
+class RewardConfig(BaseModel):
+    """Weights for the asymmetric reward engine (arena/rewards.py).
+
+    All entries are non-negative magnitudes; the signs live in the reward
+    formula, not here.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    w_evade: float = Field(default=1.0, ge=0.0)
+    w_plausibility: float = Field(default=0.3, ge=0.0)
+    w_step: float = Field(default=0.02, ge=0.0)
+    w_detect: float = Field(default=1.0, ge=0.0)
+    w_flag: float = Field(default=0.3, ge=0.0)
+    w_miss: float = Field(default=1.0, ge=0.0)
+    w_false_quarantine: float = Field(default=1.0, ge=0.0)
+    w_false_flag: float = Field(default=0.25, ge=0.0)
+
+
 class ArenaConfig(BaseModel):
     """Top-level config. One YAML file maps to one of these."""
 
@@ -51,6 +70,7 @@ class ArenaConfig(BaseModel):
     #: Global seed. Sub-configs may override for their own component.
     seed: int = 0
     scenario: ScenarioConfig = ScenarioConfig()
+    reward: RewardConfig = RewardConfig()
 
     @model_validator(mode="after")
     def _propagate_seed(self) -> "ArenaConfig":

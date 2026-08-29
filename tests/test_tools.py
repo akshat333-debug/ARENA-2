@@ -83,8 +83,21 @@ def test_sample_registry_rejects_oversized_request():
 
 def test_sample_registry_rejects_size_below_chain_requirement():
     rng = np.random.default_rng(0)
-    with pytest.raises(ValueError, match="require_chain"):
+    with pytest.raises(ValueError, match="n_tools >="):
         sample_registry(rng, Domain.NEWS, 2, require_chain=True)
+
+
+def test_sample_registry_can_guarantee_an_untrusted_read():
+    rng = np.random.default_rng(0)
+    for _ in range(20):
+        reg = sample_registry(rng, Domain.FINANCE, 6, require_untrusted_read=True)
+        assert reg.untrusted_reads
+
+
+def test_sample_registry_untrusted_read_needs_room():
+    rng = np.random.default_rng(0)
+    with pytest.raises(ValueError, match="n_tools >="):
+        sample_registry(rng, Domain.NEWS, 3, require_chain=True, require_untrusted_read=True)
 
 
 def test_registry_index_raises_on_unknown_tool():

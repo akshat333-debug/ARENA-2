@@ -170,12 +170,18 @@ def _build_objective(
     rng: np.random.Generator, family: AttackFamily, registry: ToolRegistry
 ) -> AttackObjective:
     spec = FAMILY_SPECS[family]
-    sources = registry.sources
+    # An injected-control attack's payload rides in on untrusted external content,
+    # not on a sensitive read — so its "source" is a network read. Every other
+    # family's source is a sensitive read.
+    if spec["requires_untrusted_read"]:
+        sources = registry.untrusted_reads
+    else:
+        sources = registry.sources
     sinks = registry.sinks
     if not sources or not sinks:
         raise ValueError(
             f"registry {registry.names} cannot host {family.value}: "
-            f"{len(sources)} sources, {len(sinks)} sinks"
+            f"{len(sources)} eligible sources, {len(sinks)} sinks"
         )
 
     # Sample a non-empty subset of the eligible sources/sinks, so different episodes
@@ -217,8 +223,11 @@ class ScenarioGenerator:
             raise ValueError(f"adversarial_ratio must be in [0, 1], got {adversarial_ratio}")
         if n_tools_min > n_tools_max:
             raise ValueError(f"n_tools_min ({n_tools_min}) > n_tools_max ({n_tools_max})")
-        if n_tools_min < 3:
-            raise ValueError("n_tools_min must be >= 3 to fit a source -> propagator -> sink chain")
+        if n_tools_min < 4:
+            raise ValueError(
+                "n_tools_min must be >= 4: source -> propagator -> sink, plus an "
+                "untrusted-read channel for indirect prompt injection"
+            )
 
         self.seed = seed
         self.domains = domains
@@ -246,8 +255,6 @@ class ScenarioGenerator:
         episode_seed = int(rng.integers(2**31 - 1))
         domain = self.domains[int(rng.integers(len(self.domains)))]
         n_tools = int(rng.integers(self.n_tools_min, self.n_tools_max + 1))
-        registry = sample_registry(rng, domain, n_tools, require_chain=True)
-        task = TASK_TEMPLATES[domain][int(rng.integers(len(TASK_TEMPLATES[domain])))]
 
         if force_family is not None:
             episode_type = EpisodeType.ADVERSARIAL
@@ -257,9 +264,22 @@ class ScenarioGenerator:
             is_adv = rng.random() < self.adversarial_ratio
             episode_type = EpisodeType.ADVERSARIAL if is_adv else EpisodeType.BENIGN
 
-        objective = None
+        # Family is decided before the registry is sampled, because some families
+        # (indirect prompt injection) constrain what the registry must contain.
+        family: AttackFamily | None = None
         if episode_type is EpisodeType.ADVERSARIAL:
             family = force_family or self.families[int(rng.integers(len(self.families)))]
+        needs_untrusted = family is not None and FAMILY_SPECS[family]["requires_untrusted_read"]
+
+        registry = sample_registry(
+            rng, domain, n_tools,
+            require_chain=True,
+            require_untrusted_read=needs_untrusted,
+        )
+        task = TASK_TEMPLATES[domain][int(rng.integers(len(TASK_TEMPLATES[domain])))]
+
+        objective = None
+        if family is not None:
             objective = _build_objective(rng, family, registry)
 
         self._counter += 1

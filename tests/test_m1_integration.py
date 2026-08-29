@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections import Counter
 
 from arena.config import load_config
-from arena.scenarios import ALL_FAMILIES, EpisodeType, ScenarioGenerator
+from arena.scenarios import ALL_FAMILIES, EpisodeType, ObjectiveKind, ScenarioGenerator
 from arena.tools import Domain, SideEffect, domain_pool
 
 N = 400
@@ -36,8 +36,15 @@ def test_bulk_generation_holds_every_structural_invariant():
             assert set(obj.sink_tools) <= set(reg.names)
             assert obj.min_chain_len > 1
             assert obj.min_chain_len <= sc.max_steps, "objective longer than the episode"
+            # Injected-control attacks ride in on untrusted external content, so
+            # their "source" is a network read; every other family's is a
+            # sensitive read.
             for name in obj.source_tools:
-                assert reg[reg.index(name)].is_source
+                tool = reg[reg.index(name)]
+                if obj.kind is ObjectiveKind.INJECTED_CONTROL:
+                    assert tool.is_untrusted_read
+                else:
+                    assert tool.is_source
             for name in obj.sink_tools:
                 assert reg[reg.index(name)].is_sink
         else:
