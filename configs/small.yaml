@@ -1,0 +1,18 @@
+# ARENA - small scale. THE DEFAULT.
+# Must complete on an Apple M3 in minutes. See architecture.md S10.
+name: small
+seed: 0
+
+scenario:
+  n_tools_min: 6
+  n_tools_max: 10
+  adversarial_ratio: 0.5
+  max_steps: 12
+  domains: [news, education, finance, healthcare, legal]
+  families:
+    - impersonation
+    - direct_prompt_injection
+    - indirect_prompt_injection
+    - contradicting_agents
+    - byzantine_agent
+    - colluding_agents

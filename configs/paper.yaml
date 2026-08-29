@@ -1,0 +1,18 @@
+# ARENA - paper scale. NEVER the default; needs more compute than an M3.
+# Same code path as small.yaml, larger numbers only.
+name: paper
+seed: 0
+
+scenario:
+  n_tools_min: 8
+  n_tools_max: 19
+  adversarial_ratio: 0.5
+  max_steps: 24
+  domains: [news, education, finance, healthcare, legal]
+  families:
+    - impersonation
+    - direct_prompt_injection
+    - indirect_prompt_injection
+    - contradicting_agents
+    - byzantine_agent
+    - colluding_agents

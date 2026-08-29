@@ -1,0 +1,21 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.DS_Store
+
+# fetched datasets - never vendored (see project.md S13)
+data/
+
+# training artifacts
+runs/
+checkpoints/
+*.pt
+*.ckpt
+
+# llm response cache
+.cache/
+
+.venv/
+venv/
+.env

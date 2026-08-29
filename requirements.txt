@@ -1,0 +1,18 @@
+# ARENA runtime dependencies.
+# Grown per module - see modular-plan.md. Currently: M1.
+
+# M1 - config, tools, scenarios
+numpy>=2.0
+pydantic>=2.0
+PyYAML>=6.0
+
+# tests
+pytest>=8.0
+
+# --- added in later modules ---
+# M3  gymnasium, pettingzoo
+# M4  scikit-learn
+# M5  torch
+# M8  matplotlib
+# M9  huggingface_hub, pandas, pyarrow
+# M10 ollama
