@@ -132,24 +132,25 @@ newest — the standard guard against cyclic, non-transitive strategies.
 
 ```
 arena/
-  config.py            # pydantic configs + YAML loading
-  tools.py             # tool specs, registry, side-effect classes
-  scenarios.py         # scenario generator; 6 families -> chained MCP variants
-  taint.py             # ground-truth data-flow tracker (ENV-INTERNAL ONLY)
-  env.py               # PettingZoo AEC env + Gymnasium wrappers
-  features.py          # observable call -> Blue's feature vector
-  rewards.py           # reward engine
-  policies.py          # Red net, Blue GRU net
-  ppo.py               # single-file PPO trainer
-  league.py            # checkpoint pool + opponent sampling
-  baselines/           # allowlist.py, single_shot.py, causal.py
-  eval/                # metrics.py, exploitability.py, harness.py
-  llm/                 # ollama_client.py (cached), payloads.py
-  data/                # fetch.py (TAMAS + Toucan + manifest), toucan.py
-scripts/               # train_selfplay.py, run_eval.py, make_leaderboard.py
-configs/               # small.yaml (M3 default), paper.yaml (scale-up target)
+  config.py            # pydantic configs + YAML loading                    [M1-M2]
+  tools.py             # tool specs, registry, side-effect classes          [M1]
+  scenarios.py         # scenario generator; 6 families -> chained variants  [M1]
+  taint.py             # ground-truth data-flow tracker (ENV-INTERNAL ONLY) [M2]
+  rewards.py           # asymmetric reward engine                           [M2]
+  features.py          # shared observable encoders + baseline feature views [M4]
+  env.py               # PettingZoo AEC env + SingleAgentARENA Gym wrapper  [M3]
+  scripted.py          # non-learned policies (attacker, benign, refs)      [M4]
+  baselines/           # allowlist / single_shot / causal + collect, evaluate [M4]
+  policies.py          # Red net, Blue GRU net                              [M5]
+  ppo.py               # single-file PPO trainer                            [M5]
+  league.py            # checkpoint pool + opponent sampling                [M7]
+  eval/                # metrics, exploitability, harness                   [M8]
+  llm/                 # ollama client (cached), payload rendering          [M10]
+  data/                # fetch (TAMAS + Toucan + manifest)                  [M9]
+scripts/               # run_baselines.py [M4]; train_selfplay, run_eval... [M6+]
+configs/               # small.yaml (default), paper.yaml (scale-up target)
 tests/                 # unit + integration, mirrors arena/
-docs/
+docs/                  # per-module notes
 ```
 
 ## 10. Scale posture

@@ -39,6 +39,19 @@ from pettingzoo import AECEnv
 from pettingzoo.utils import AgentSelector
 
 from arena.config import ArenaConfig, RewardConfig
+from arena.features import (
+    ALLOW,
+    CALL_FEATS,
+    DOMAINS,
+    FLAG,
+    QUARANTINE,
+    VERDICTS,
+    blue_observation_space,
+    domain_onehot,
+    encode_call,
+    history_matrix,
+    red_observation_space,
+)
 from arena.rewards import EpisodeOutcome, compute_rewards, heuristic_plausibility
 from arena.scenarios import Scenario, ScenarioGenerator
 from arena.taint import TaintTracker
@@ -48,34 +61,16 @@ RED = "red_0"
 BLUE = "blue_0"
 AGENTS = (RED, BLUE)
 
-# Verdict action encoding for Blue.
-ALLOW, FLAG, QUARANTINE = 0, 1, 2
-VERDICTS = (ALLOW, FLAG, QUARANTINE)
+# Verdict constants (ALLOW/FLAG/QUARANTINE) are re-exported from features so
+# callers can `from arena.env import QUARANTINE` without knowing the layout lives
+# elsewhere.
+__all__ = [
+    "ARENAEnv", "SingleAgentARENA", "raw_env",
+    "RED", "BLUE", "AGENTS", "ALLOW", "FLAG", "QUARANTINE", "VERDICTS",
+    "ResolvedCall",
+]
 
-# Stable ordering for one-hot encodings. Any tool's category/side-effect is one
-# of these; the lists are fixed so an observation means the same thing in every
-# episode regardless of which tools this registry happens to hold.
-SIDE_EFFECTS = ("read_benign", "read_sensitive", "transform", "write_local", "external_sink", "exec")
-CATEGORIES = ("filesystem", "secrets", "network", "compute", "communication", "content", "records", "transaction")
-DOMAINS = ("news", "education", "finance", "healthcare", "legal")
-
-_SE_IX = {s: i for i, s in enumerate(SIDE_EFFECTS)}
-_CAT_IX = {c: i for i, c in enumerate(CATEGORIES)}
-_DOM_IX = {d: i for i, d in enumerate(DOMAINS)}
-
-# Per-call feature vector: observable tool properties + position + verdict-so-far.
-#   side_effect one-hot            len(SIDE_EFFECTS) = 6
-#   category one-hot               len(CATEGORIES)   = 8
-#   sensitivity / 2                                    1
-#   is_untrusted_read                                  1
-#   is_privileged                                      1
-#   position = step_index / max_steps                  1
-#   resolved?  (0 for the pending proposal)            1
-#   verdict one-hot (allow, flag)                      2   quarantine ends the episode
-#   -> 5 scalars + 2 verdict = 7 beyond the two one-hot blocks
-CALL_FEATS = len(SIDE_EFFECTS) + len(CATEGORIES) + 7
-# Extra slot appended for Red only: Blue's verdict incl. quarantine, one-hot(3).
-RED_EXTRA = 3
+_KIND_IX = {"exfiltration": 0, "unauthorized_action": 1, "injected_control": 2}
 
 
 @dataclass
@@ -83,41 +78,6 @@ class ResolvedCall:
     step_index: int
     tool: ToolSpec
     verdict: int  # ALLOW or FLAG (QUARANTINE never produces a resolved call)
-
-
-def _encode_call(
-    tool: ToolSpec,
-    step_index: int,
-    max_steps: int,
-    *,
-    resolved: bool,
-    verdict: int | None,
-    for_red: bool,
-) -> np.ndarray:
-    """Observable-only encoding of one call. ``verdict`` is ``None`` for the
-    pending proposal. ``for_red`` appends Blue's full verdict (Red's feedback
-    channel); Blue's own view stops at allow/flag."""
-    width = CALL_FEATS + (RED_EXTRA if for_red else 0)
-    v = np.zeros(width, dtype=np.float32)
-    o = 0
-    v[o + _SE_IX[tool.side_effect.value]] = 1.0
-    o += len(SIDE_EFFECTS)
-    v[o + _CAT_IX[tool.category]] = 1.0
-    o += len(CATEGORIES)
-    v[o] = tool.sensitivity / 2.0
-    v[o + 1] = float(tool.is_untrusted_read)
-    v[o + 2] = float(tool.is_privileged)
-    v[o + 3] = step_index / max(1, max_steps)
-    v[o + 4] = float(resolved)
-    o += 5
-    # verdict one-hot (allow, flag) — shared by both views
-    if resolved and verdict in (ALLOW, FLAG):
-        v[o + verdict] = 1.0
-    o += 2
-    if for_red:
-        if resolved and verdict in VERDICTS:
-            v[o + verdict] = 1.0
-    return v
 
 
 class ARENAEnv(AECEnv):
@@ -151,23 +111,8 @@ class ARENAEnv(AECEnv):
         )
 
         self._obs_spaces = {
-            RED: spaces.Dict(
-                {
-                    "task": spaces.Box(0.0, 1.0, (len(DOMAINS) + 1,), np.float32),
-                    "registry": spaces.Box(0.0, 1.0, (self._n_tools_max, CALL_FEATS), np.float32),
-                    "registry_mask": spaces.MultiBinary(self._n_tools_max),
-                    "objective": spaces.Box(0.0, 1.0, (4 + 2 * self._n_tools_max,), np.float32),
-                    "history": spaces.Box(0.0, 1.0, (self._max_steps, CALL_FEATS + RED_EXTRA), np.float32),
-                    "length": spaces.Box(0, self._max_steps, (1,), np.int32),
-                }
-            ),
-            BLUE: spaces.Dict(
-                {
-                    "domain": spaces.Box(0.0, 1.0, (len(DOMAINS),), np.float32),
-                    "calls": spaces.Box(0.0, 1.0, (self._max_steps, CALL_FEATS), np.float32),
-                    "length": spaces.Box(0, self._max_steps, (1,), np.int32),
-                }
-            ),
+            RED: red_observation_space(self._max_steps, self._n_tools_max),
+            BLUE: blue_observation_space(self._max_steps),
         }
         self._act_spaces = {
             RED: spaces.Discrete(self._n_tools_max),
@@ -334,44 +279,36 @@ class ARENAEnv(AECEnv):
 
     # --- observation builders (OBSERVABLE METADATA ONLY) ---------------
 
-    def _history_matrix(self, *, for_red: bool) -> tuple[np.ndarray, int]:
-        width = CALL_FEATS + (RED_EXTRA if for_red else 0)
-        mat = np.zeros((self._max_steps, width), dtype=np.float32)
-        for i, rc in enumerate(self._history):
-            mat[i] = _encode_call(
-                rc.tool, rc.step_index, self._max_steps,
-                resolved=True, verdict=rc.verdict, for_red=for_red,
-            )
-        length = len(self._history)
-        # Append the pending proposal (unresolved) so the acting agent sees it.
-        if self._pending_tool_idx is not None and length < self._max_steps:
-            tool = self._scenario.registry[self._pending_tool_idx]
-            mat[length] = _encode_call(
-                tool, self._step_index, self._max_steps,
-                resolved=False, verdict=None, for_red=for_red,
-            )
-            length += 1
-        return mat, length
+    def _history_rows(self) -> list[tuple[ToolSpec, int, int]]:
+        return [(rc.tool, rc.step_index, rc.verdict) for rc in self._history]
+
+    def _pending(self) -> tuple[ToolSpec, int] | None:
+        if self._pending_tool_idx is None:
+            return None
+        return self._scenario.registry[self._pending_tool_idx], self._step_index
 
     def _blue_obs(self) -> dict:
-        mat, length = self._history_matrix(for_red=False)
-        dom = np.zeros(len(DOMAINS), dtype=np.float32)
-        dom[_DOM_IX[self._scenario.domain.value]] = 1.0
-        return {"domain": dom, "calls": mat, "length": np.array([length], dtype=np.int32)}
+        mat, length = history_matrix(
+            self._history_rows(), self._pending(), self._max_steps, for_red=False
+        )
+        return {
+            "domain": domain_onehot(self._scenario.domain.value),
+            "calls": mat,
+            "length": np.array([length], dtype=np.int32),
+        }
 
     def _red_obs(self) -> dict:
         sc = self._scenario
         reg = sc.registry
 
         task = np.zeros(len(DOMAINS) + 1, dtype=np.float32)
-        task[_DOM_IX[sc.domain.value]] = 1.0
-        # last slot: fraction of the episode elapsed
+        task[: len(DOMAINS)] = domain_onehot(sc.domain.value)
         task[-1] = self._step_index / max(1, self._max_steps)
 
         registry = np.zeros((self._n_tools_max, CALL_FEATS), dtype=np.float32)
         mask = np.zeros(self._n_tools_max, dtype=np.int8)
         for i, tool in enumerate(reg):
-            registry[i] = _encode_call(
+            registry[i] = encode_call(
                 tool, 0, self._max_steps, resolved=False, verdict=None, for_red=False
             )
             mask[i] = 1
@@ -379,8 +316,7 @@ class ARENAEnv(AECEnv):
         objective = np.zeros(4 + 2 * self._n_tools_max, dtype=np.float32)
         if sc.objective is not None:
             obj = sc.objective
-            kind_ix = {"exfiltration": 0, "unauthorized_action": 1, "injected_control": 2}
-            objective[kind_ix[obj.kind.value]] = 1.0
+            objective[_KIND_IX[obj.kind.value]] = 1.0
             objective[3] = obj.min_chain_len / max(1, self._max_steps)
             for name in obj.source_tools:
                 if name in reg.names:
@@ -389,7 +325,9 @@ class ARENAEnv(AECEnv):
                 if name in reg.names:
                     objective[4 + self._n_tools_max + reg.index(name)] = 1.0
 
-        mat, length = self._history_matrix(for_red=True)
+        mat, length = history_matrix(
+            self._history_rows(), self._pending(), self._max_steps, for_red=True
+        )
         return {
             "task": task,
             "registry": registry,

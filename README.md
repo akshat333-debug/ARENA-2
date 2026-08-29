@@ -25,9 +25,10 @@ attacks that *don't even adapt*. ARENA measures what happens when the attacker l
 |---|---|
 | **M1** — config, tools, scenarios | ✅ done |
 | **M2** — taint tracker, reward engine | ✅ done |
-| **M3** — PettingZoo env + Gym wrapper | ✅ done — 173 tests passing |
-| M4 — features, baselines | next |
-| M5–M11 | pending |
+| **M3** — PettingZoo env + Gym wrapper | ✅ done |
+| **M4** — features + 3 baseline defenders | ✅ done — 203 tests passing |
+| M5 — policies + PPO | next |
+| M6–M11 | pending |
 
 ## Install
 
@@ -119,6 +120,24 @@ gym_env = SingleAgentARENA(RED, opponent=frozen_blue_policy, config=load_config(
   primitive: freeze Blue, train a fresh best-response Red, measure success rate.
 - Headline claim demonstrated in `tests/test_m3_integration.py`: a sequence-aware Blue
   stops the split-chain exfiltration that a per-call Blue allows through.
+
+## What M4 gives you
+
+```bash
+python3 scripts/run_baselines.py small.yaml     # train + score the 3 baselines
+```
+
+- **`arena/features.py`** — one shared definition of the observable state
+  (`encode_call`, `history_matrix`, and two baseline views: `single_call_features` for a
+  per-call detector, `sequence_features` with causal proxies for a trajectory detector).
+  Lifted out of `env.py`; the M1–M3 tests pass unchanged.
+- **Three baseline defenders** (`arena/baselines/`), each a drop-in Blue policy:
+  `StaticAllowList` (per-call, no memory — today's default), `SingleShotDetector`
+  (TAMAS-style per-call classifier), `CausalMonitor` (CASPIAN-style trajectory classifier).
+- **Result** (`docs/m4-features-and-baselines.md`): allow-list ≈ chance and ~89% attack
+  success (matching TAMAS's ~80–82%); single-shot TPR@5%FPR ≈ 0.19 — it *cannot* separate
+  the split chain; causal monitor TPR@5%FPR ≈ 0.85. This is the yardstick ARENA's trained
+  Blue must beat.
 
 ## Configuration
 
