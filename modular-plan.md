@@ -25,12 +25,30 @@ Push only on explicit confirmation, per user instruction. Local commits accumula
 | **M8** ✅ | `eval/metrics.py`, `eval/exploitability.py`, `eval/harness.py`; `EvalConfig`; `scripts/run_eval.py` | Rank-based AUROC / ROC / TPR@FPR (match sklearn); exploitability = fresh best-response Red vs frozen Blue on an all-adversarial distribution; `exploitability_curve` / `curve_from_league`; leaderboard calibrated to a matched ~5% FPR | metrics match sklearn + hand fixtures; exploitability spawns a genuinely fresh Red (starts near chance, does not mutate a passed-in policy); baseline leaderboard ordering (causal < single-shot < allowlist on exploitability at matched FPR; causal AUROC 0.98). 296 fast tests. | M7, M4 |
 | **M9** ✅ | `data/fetch.py`, `data/toucan.py`, `THIRD_PARTY.md`, `scripts/fetch_data.py`; `ScenarioConfig.benign_source` | Idempotent TAMAS (tarball) + Toucan-1.5M (HF rows API subsample) fetch, sha256+licence+date manifest, `verify()`; Toucan → `BenignProfile` (read/act/other category weights) driving `BenignRoller`; **zero new deps** (stdlib only) | fetch idempotent (re-run hits no network); manifest records checksum + date; a skewed profile measurably shifts `BenignRoller`'s category mix vs uniform, sink invariant preserved; `benign_source: toucan` wired through `collect_decisions` / `false_quarantine_rate`, falls back to synthetic if `data/` absent; licences in `THIRD_PARTY.md`. 328 fast + 3 slow tests. | M3 |
 | **M10** | `llm/` | Cached Ollama client; qwen2.5:3b payload rendering; held-out transfer sweep | cache hit/miss correct; sweep degrades gracefully to templates if Ollama is absent or output fails validity check | M8, M9 |
-| **M11** | Leaderboard + report | Exploitability curves, baseline comparison table, paper draft, patent claim structure | numbers in the report are regenerable from a single command | M8, M10 |
+| **M11** | Leaderboard + report | Exploitability curves, baseline comparison table, paper draft, patent claim structure | numbers in the report are regenerable from a single command; **and the open problem the audit exposed is addressed head-on** — either the exploitability gap closes (scale, generations, PFSP sampling, denser Blue reward, causal features) or the report states plainly that co-evolution did not beat the static baselines at the scale tested | M8, M10 |
 
 **Design note on ordering:** baselines (M4) land *before* RL (M5) deliberately — that gives a
 working evaluation target and a demonstrated failure case early, so the RL work has something
 real to beat from day one. Benign traffic starts synthetic (M1) and swaps to Toucan at M9;
 the env takes a pluggable benign source from M3 so that swap costs nothing.
+
+## Audit (M1–M9) — done
+
+Full module + data-flow audit after M9: **3 real bugs**, all in the measurement
+path, all fixed — see [docs/audit-m1-m9.md](docs/audit-m1-m9.md).
+
+1. `env.py` raised `terminated` *and* `truncated` together → PPO recorded no GAE
+   boundary at ~90% of episode ends. Corrupted every M5–M8 training run.
+2. `selfplay.py`'s per-generation `exploitability` measured Red against a league
+   sample of *past* Blues, capped at `adversarial_ratio`, not the current Blue.
+3. `eval/harness.py` scored a learned Blue stochastically against deterministic
+   baselines.
+
+**Consequence:** the M8 headline ("~3× less exploitable than the strongest static
+baseline") was an artifact and is withdrawn. Re-measured, `arena_blue`
+exploitability is **0.780** vs the causal monitor's **0.690**, and the
+generation curve is flat. Closing that gap is now the substantive open problem
+for M11 — it is no longer claimed as solved anywhere in the repo.
 
 ## Gates still ahead
 

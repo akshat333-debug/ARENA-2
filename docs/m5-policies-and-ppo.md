@@ -29,10 +29,22 @@ Own single-file trainer, not Stable-Baselines3 (architecture.md §2). Standard P
 GAE(λ), clipped surrogate, value loss, entropy bonus, grad-norm clipping — plus two
 details that matter here:
 
-- **Truncation bootstrapping.** Step-cap truncation is *not* a terminal state. Without
-  bootstrapping through it, Red learns that running out of time is as bad as being caught.
-  `compute_gae` takes the value of the cut state; the advantage trace still resets at the
-  boundary because the next transition belongs to a different episode.
+- **Episode boundaries.** `compute_gae` handles both kinds: a *terminal* gets no
+  bootstrap, a *truncation* bootstraps from the value of the cut state, and the advantage
+  trace resets at either because the next transition belongs to a different episode.
+
+  ARENA itself only ever produces terminals. The step cap **is** a terminal state here,
+  not a Gymnasium `TimeLimit` truncation: the remaining budget is observable
+  (`step_index / max_steps` is in every call row and in Red's task vector), and
+  `compute_rewards` settles the whole outcome at the cap, so there is no future to
+  bootstrap. The truncation path is kept because it is correct and tested, and becomes
+  live the moment anyone chunks episodes.
+
+  > This is the corrected account. Until the M1–M9 audit the env raised `terminated` and
+  > `truncated` **together** at the step cap, which made both `terminated and not
+  > truncated` and `truncated and not terminated` false — so ~90% of episode ends were
+  > recorded as no boundary at all and GAE bled advantages across episodes. Every M5–M8
+  > training run was affected. See [audit-m1-m9.md](audit-m1-m9.md).
 - **Dict observations.** Both sides observe dicts; the buffer stores them per-key and
   batches with `stack_obs`.
 
@@ -66,6 +78,11 @@ so the trained Blue is at or slightly above the reference ceiling, and its quara
 tracks the adversarial rate (~0.5) instead of saturating at 1.0 — it is discriminating, not
 blanket-blocking. **The RL-trained sequence-aware defender beats the CASPIAN-style
 baseline by ~0.6 reward.**
+
+> **On the results above:** they were measured before the M1–M9 audit fixed the
+> GAE-boundary bug. The *ordering* was re-verified after the fix
+> (`test_m5_integration` still passes: trained Blue positive, causal monitor /
+> passive / paranoid negative), but the exact figures were not re-measured.
 
 ## Three real bugs this module surfaced
 

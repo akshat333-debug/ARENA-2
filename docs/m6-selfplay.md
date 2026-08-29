@@ -30,6 +30,14 @@ in the same distribution to keep its false-positive cost real.
 
 ## What a run shows (small.yaml, seed 0, 4 generations × 40k steps/side, ~3 min on M3)
 
+> **Audit correction.** This trace predates the M1–M9 audit
+> ([audit-m1-m9.md](audit-m1-m9.md)), which found a PPO bug that corrupted every
+> training run and a second bug that made the `exploitability` column measure the
+> wrong quantity. Treat the **shape** as the finding — the quarantine-rate
+> collapse in generations 2–3 is what motivates M7, and M7's fix was re-verified
+> after the audit — but do not cite these figures, and ignore the
+> `exploitability` column entirely.
+
 ```
 gen 0: exploitability=0.035  blue_return=+0.325  blue_quarantine=0.545  blue_miss=0.035
 gen 1: exploitability=0.015  blue_return=+0.416  blue_quarantine=0.560  blue_miss=0.010

@@ -96,9 +96,17 @@ def test_self_play_with_league_is_reproducible():
 
 @pytest.mark.parametrize("_", [0])  # keep it a single slow case, easy to deselect
 def test_league_keeps_blue_discriminating_where_m6_drifts(_):
-    """The payoff. A 4-generation run at real step counts: with the league,
-    Blue's quarantine rate must not have collapsed toward zero by the last
-    generation (the M6 failure), and exploitability must stay low."""
+    """The payoff, and *only* the payoff M7 actually claims: with the league,
+    Blue does not drift to passive by the last generation (the M6 failure), and
+    it handles the opponents it trains against.
+
+    This deliberately does **not** assert that exploitability by a *fresh best
+    response* falls — see `docs/audit-m1-m9.md`. It used to
+    (`last.exploitability < 0.30`), which passed only because a PPO bug crippled
+    every best-response Red; with that fixed the fresh-BR number is ~0.7 and
+    flat across generations. Closing that gap is an open problem for M11, not
+    something this module ever demonstrated.
+    """
     cfg = load_config("small.yaml").model_copy(
         update={"selfplay": SelfPlayConfig(n_generations=4, steps_per_side=40_000,
                                            eval_episodes=200)}
@@ -112,6 +120,10 @@ def test_league_keeps_blue_discriminating_where_m6_drifts(_):
         f"Blue drifted to passive despite the league: "
         f"quarantine rate {last.blue_quarantine_rate:.3f}"
     )
-    assert last.exploitability < 0.30, f"exploitability too high: {last.exploitability:.3f}"
     # and it should not have gone the other way into blanket paranoia either
     assert last.blue_quarantine_rate < 0.95
+    # Against the league it trains on, Blue stops most attacks — the thing the
+    # opponent pool is there to preserve.
+    assert last.blue_attack_success < 0.30, (
+        f"Blue is not stopping the league's Reds: {last.blue_attack_success:.3f}"
+    )

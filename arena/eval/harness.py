@@ -94,7 +94,14 @@ def _blue_policy_for(defender) -> BluePolicy:
     if isinstance(defender, ActorCritic):
         from arena.policies import TorchPolicyAdapter
 
-        return TorchPolicyAdapter(defender, deterministic=False)
+        # Greedy, NOT sampled. Every baseline on this leaderboard is a
+        # deterministic threshold rule, and a deployed neural defender takes the
+        # argmax too — sampling is a training-time exploration device. Scoring a
+        # learned Blue stochastically hands the attacker free passes whenever the
+        # sample falls off the greedy action, which is not a property of the
+        # defender under test. (M9 audit: this alone was worth ~0.3
+        # exploitability and made the headline comparison apples-to-oranges.)
+        return TorchPolicyAdapter(defender, deterministic=True)
     if callable(defender):
         return defender  # a BlueBaseline is callable
     raise TypeError(f"cannot turn {type(defender).__name__} into a Blue policy")

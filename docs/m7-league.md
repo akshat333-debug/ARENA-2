@@ -68,15 +68,33 @@ negative — worse than doing nothing). With it, Blue stays discriminating acros
 generations (quarantine rate ~0.46–0.57, return solidly positive) because it keeps facing
 strong past Reds.
 
-The league-on exploitability trace is `0.035 → 0.400 → 0.205 → 0.140`. The spike at
-generation 1 is real co-evolution, not instability: with a league, the inline
-exploitability number measures the freshly-trained Red against a *sampled past Blue* rather
-than the current one, so Red exploiting the pool shows up as a jump, after which Blue
-recovers over generations 2–3. The clean paper metric — a fresh best-response Red vs the
-frozen *latest* Blue — is the M8 harness's job.
+> **Audit correction.** The numbers in the table above were measured before the
+> M1–M9 audit, which found a PPO bug that corrupted every training run
+> ([audit-m1-m9.md](audit-m1-m9.md)). The **qualitative** claim was re-verified
+> after the fix — with the league on, Blue's quarantine rate at generation 3 is
+> **0.585** and it stops >92% of the league's attacks, so it is still
+> discriminating rather than drifting to passive. The exact per-generation
+> figures above, and the league-**off** column in particular, have not been
+> re-measured and should be read as indicative.
+
+The doc previously reported a league-on exploitability trace of
+`0.035 → 0.400 → 0.205 → 0.140` and explained the generation-1 spike as Red
+exploiting a *sampled past Blue*. The audit found that explanation was
+diagnosing a bug: with a league, `GenerationStats.exploitability` was measuring
+Red against the pool average rather than the current Blue, on a distribution
+capped at `adversarial_ratio`. It now measures Red vs the **current, greedy**
+Blue on an all-adversarial distribution, the same scale as the M8 metric. That
+trace is therefore withdrawn rather than reinterpreted.
+
+The clean metric — a fresh best-response Red vs the frozen latest Blue — is the
+M8 harness's job, and after the fix it is **flat** across generations
+(`0.720 → 0.765 → 0.740 → 0.710`). The league prevents drift; it does not, at
+this scale, reduce exploitability. See [m8-evaluation.md](m8-evaluation.md).
 
 `test_league_keeps_blue_discriminating_where_m6_drifts` asserts the final quarantine rate
-stays above 0.20 (it lands ~0.46) and does not tip past 0.95 into blanket paranoia.
+stays above 0.20 (it lands ~0.59), does not tip past 0.95 into blanket paranoia, and that
+Blue stops most of the league's attacks. Its former `exploitability < 0.30` assertion was
+removed — it passed only because the bug crippled the attacker.
 
 ## Config
 

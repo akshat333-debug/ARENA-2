@@ -41,8 +41,11 @@ class GenerationStats:
     generation: int
     red_train: TrainStats
     blue_train: TrainStats
-    #: Best-response attack success of the Red trained this generation against the
-    #: Blue it was trained on — the running exploitability proxy. Should trend down.
+    #: Attack success of the Red trained this generation against the **current**
+    #: Blue, on an all-adversarial distribution — the running exploitability proxy,
+    #: on the same scale as :func:`arena.eval.exploitability`. Should trend down.
+    #: (It is a *proxy*: this Red was trained against Blue, so it is a warm-started
+    #: attacker, not the fresh best response the M8 metric spawns.)
     exploitability: float
     blue_return_vs_red: float
     blue_quarantine_rate: float
@@ -122,6 +125,33 @@ class SelfPlayTrainer:
         )
         return env
 
+    def _exploit_env(self) -> SingleAgentARENA:
+        """Red vs the **current** Blue, every episode an attack — the env the
+        per-generation exploitability proxy is measured in.
+
+        Deliberately not :meth:`_red_env`. Two confounds live there:
+
+        * With a league, ``_red_env``'s opponent is a *sample of past Blues*, so
+          Red's success in it measures Red against the pool average. That number
+          climbs as Red improves even while the current Blue is getting stronger
+          — which is exactly what it did: a run ending with the current Blue
+          stopping 92.5% of attacks still reported "exploitability 0.48".
+        * The training config's ``adversarial_ratio`` caps attack success at that
+          ratio, because benign episodes have no objective to complete. This is
+          the same confound :func:`arena.eval.exploitability` forces to 1.0, and
+          the two numbers have to be on one scale to be comparable.
+        """
+        cfg = self.cfg
+        if cfg.scenario.adversarial_ratio != 1.0:
+            cfg = cfg.model_copy(
+                update={"scenario": cfg.scenario.model_copy(
+                    update={"adversarial_ratio": 1.0})}
+            )
+        # Greedy Blue: this measures the *deployed* defender, matching
+        # `arena.eval.exploitability`. Training opponents stay stochastic.
+        blue = TorchPolicyAdapter(self.blue, deterministic=True, device=self.device)
+        return SingleAgentARENA(RED, blue, config=cfg)
+
     # --- one generation --------------------------------------------
 
     def _train_side(self, side: str, gen: int) -> TrainStats:
@@ -134,7 +164,8 @@ class SelfPlayTrainer:
 
     def _evaluate(self, gen: int, rs: TrainStats, bs: TrainStats) -> GenerationStats:
         n = self.cfg.selfplay.eval_episodes
-        red_vs_blue = evaluate_policy(self._red_env(), self.red, n, deterministic=False, device=self.device)
+        red_vs_blue = evaluate_policy(self._exploit_env(), self.red, n, deterministic=False,
+                                      device=self.device)
         blue_vs_red = evaluate_policy(self._blue_env(), self.blue, n, deterministic=False, device=self.device)
         return GenerationStats(
             generation=gen,

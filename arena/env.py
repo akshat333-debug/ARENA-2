@@ -296,9 +296,25 @@ class ARENAEnv(AECEnv):
         self._last_breakdown = rb
 
         step_cap = not self._quarantined and self._completion_step is None
+        # Every ending is a *termination*, including the step cap, and the two
+        # flags are mutually exclusive (Gymnasium's contract).
+        #
+        # The step cap looks like a Gymnasium `TimeLimit` truncation but is not
+        # one, for two independent reasons:
+        #   1. The remaining budget is *observable* — `step_index / max_steps`
+        #      rides in every encoded call row and in Red's task vector. A
+        #      time-aware MDP owns its horizon, so hitting it is a real terminal
+        #      state, not an external cut (Pardo et al. 2018, "Time Limits in RL").
+        #   2. `compute_rewards` settles the whole episode here: running out of
+        #      time is already priced (Red is not paid, Blue eats the miss).
+        #      Bootstrapping gamma*V(s) on top would credit a future that cannot
+        #      happen.
+        # Emitting both flags at once — as this did until the M9 audit — made
+        # `terminated and not truncated` false at ~90% of episode ends, so PPO
+        # recorded no boundary at all and let GAE bleed across episodes.
         for a in self.agents:
             self.terminations[a] = True
-            self.truncations[a] = step_cap
+            self.truncations[a] = False
             self.infos[a] = {
                 "scenario_id": sc.scenario_id,
                 "episode_type": sc.episode_type.value,
@@ -306,6 +322,7 @@ class ARENAEnv(AECEnv):
                 "objective_completed": outcome.objective_completed,
                 "quarantined": self._quarantined,
                 "n_steps": outcome.n_steps,
+                "hit_step_cap": step_cap,
             }
 
     # --- observation builders (OBSERVABLE METADATA ONLY) ---------------

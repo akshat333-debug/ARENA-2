@@ -75,6 +75,29 @@ def rr(env):
     return b.r_red, b.r_blue
 
 
+def flags_at_end(env, red_policy, blue_policy, seed=0):
+    """Snapshot ``(terminations, truncations)`` the moment the episode ends.
+
+    ``agent_iter`` prunes both dicts as the agents drain, so reading them after
+    :func:`run_aec` returns *empty* dicts — and ``all()`` / ``any()`` over an
+    empty dict is vacuously true. That is precisely how this env shipped for
+    four modules raising ``terminated`` and ``truncated`` together while two
+    tests "asserted" contradictory things about it (M9 audit).
+    """
+    env.reset(seed=seed)
+    snap = None
+    for agent in env.agent_iter():
+        obs, _, term, trunc, _ = env.last()
+        if term or trunc:
+            if snap is None:
+                snap = (dict(env.terminations), dict(env.truncations))
+            env.step(None)
+            continue
+        env.step(red_policy(obs) if agent == RED else blue_policy(obs))
+    assert snap is not None, "episode never ended"
+    return snap
+
+
 # --- API conformance -----------------------------------------------
 
 
@@ -130,21 +153,56 @@ def test_quarantine_ends_episode_immediately_and_call_does_not_execute():
 def test_objective_completion_ends_episode():
     sc = adversarial_scenario()
     env = ARENAEnv(scenario=sc)
-    run_aec(env, ScriptedRed(winning_chain_indices(sc)), allow_blue)
+    term, trunc = flags_at_end(env, ScriptedRed(winning_chain_indices(sc)), allow_blue)
     assert env.last_outcome.objective_completed
-    assert all(env.terminations.values())
-    assert not any(env.truncations.values())  # completion is a termination, not truncation
+    assert all(term.values()) and term  # non-empty: the snapshot really ran
+    assert not any(trunc.values())  # completion is a termination, not truncation
 
 
-def test_step_cap_truncates():
+def test_step_cap_ends_the_episode_as_a_termination_not_a_truncation():
+    """The step cap is a real terminal state, not a Gymnasium `TimeLimit` cut:
+    the remaining budget is observable and `compute_rewards` settles the whole
+    outcome there, so there is nothing to bootstrap through (env.py `_end_episode`).
+
+    Raising both flags at once — which this env did until the M9 audit — makes
+    the standard `terminated and not truncated` idiom silently drop the boundary.
+    """
     sc = adversarial_scenario(seed=3)
     env = ARENAEnv(scenario=sc)
     # Red keeps reading a benign file; nothing ever completes.
     benign_idx = sc.registry.index("read_file") if "read_file" in sc.registry.names else 0
-    run_aec(env, lambda o: benign_idx, allow_blue)
+    term, trunc = flags_at_end(env, lambda o: benign_idx, allow_blue)
     assert env.last_outcome.n_steps == sc.max_steps
-    assert all(env.truncations.values())
-    assert all(env.terminations.values())
+    assert all(term.values()) and term
+    assert not any(trunc.values())
+
+
+@pytest.mark.parametrize("ending", ["quarantine", "completion", "step_cap"])
+def test_exactly_one_of_terminated_truncated_fires(ending):
+    """Gymnasium's contract, checked at the interface PPO actually consumes.
+
+    `SingleAgentARENA.step` is where the flags reach the learner, and the
+    `terminated and not truncated` idiom there silently drops an episode
+    boundary if an env raises both at once.
+    """
+    sc = adversarial_scenario(seed=5)
+    chain = winning_chain_indices(sc)
+    blue = quarantine_blue if ending == "quarantine" else allow_blue
+    red = ScriptedRed(chain) if ending == "completion" else (lambda o: 0)
+
+    env = SingleAgentARENA(RED, blue, scenario=sc)
+    env.reset(seed=0)
+    term = trunc = False
+    while not (term or trunc):
+        _, _, term, trunc, info = env.step(red(None))
+
+    assert term != trunc, "exactly one flag must fire"
+    assert term is True and trunc is False
+    assert info["hit_step_cap"] is (ending == "step_cap")
+    if ending == "quarantine":
+        assert info["quarantined"]
+    if ending == "completion":
+        assert info["objective_completed"]
 
 
 # --- reward wiring ----------------------------------------------

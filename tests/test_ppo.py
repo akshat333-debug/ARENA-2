@@ -9,7 +9,7 @@ import torch
 from arena.config import PPOConfig, load_config
 from arena.env import RED, SingleAgentARENA
 from arena.policies import make_policy
-from arena.ppo import PPOTrainer, RolloutBuffer, compute_gae, resolve_device
+from arena.ppo import PPOTrainer, RolloutBuffer, TrainStats, compute_gae, resolve_device
 from arena.scenarios import AttackFamily, ScenarioGenerator
 from arena.scripted import passive_blue
 
@@ -88,6 +88,70 @@ def test_buffer_add_and_clear():
     assert len(b) == 1
     b.clear()
     assert len(b) == 0
+
+
+# --- collect(): env flags -> GAE boundaries ---------------------------
+#
+# The GAE tests above check `compute_gae` in isolation and pass regardless of
+# what `collect` feeds it. The bug this section exists for lived exactly in that
+# gap: ARENAEnv raised `terminated` AND `truncated` together at the step cap, so
+# `terminated and not truncated` was False and the bootstrap branch (`truncated
+# and not terminated`) was False too — every step-cap episode ended with *no*
+# boundary recorded, and ~90% of episode ends bled advantage into the next
+# episode. Found in the M9 audit.
+
+
+def test_every_finished_episode_records_exactly_one_gae_boundary():
+    trainer, _ = a_trainer()
+    stats = TrainStats()
+    trainer.collect(256, stats)
+    buf = trainer.buffer
+
+    boundaries = sum(
+        1 for t, tv in zip(buf.terminals, buf.truncated_values) if t or tv is not None
+    )
+    assert len(stats.episode_returns) > 0, "no episode finished; test is vacuous"
+    assert boundaries == len(stats.episode_returns)
+    # and never both at once
+    assert not any(t and tv is not None for t, tv in zip(buf.terminals, buf.truncated_values))
+
+
+def test_collect_marks_a_boundary_even_if_an_env_raises_both_flags():
+    """Defensive: `terminal` is derived from `done`, not from `terminated`
+    alone, so an env that violates the mutual-exclusion contract degrades to a
+    terminal (no bootstrap) instead of silently dropping the boundary."""
+
+    class BothFlagsEnv:
+        """Ends every episode after 3 steps with terminated=truncated=True."""
+
+        def __init__(self, inner):
+            self._inner = inner
+            self._n = 0
+
+        def reset(self, **kw):
+            self._n = 0
+            return self._inner.reset(**kw)
+
+        def step(self, a):
+            obs, r, term, trunc, info = self._inner.step(a)
+            self._n += 1
+            if self._n % 3 == 0 or term or trunc:
+                self._inner.reset()
+                self._n = 0
+                return obs, r, True, True, info
+            return obs, r, False, False, info
+
+    sc = a_scenario()
+    inner = SingleAgentARENA(RED, passive_blue, scenario=sc)
+    pol = make_policy("red", max_steps=sc.max_steps, n_tools_max=len(sc.registry))
+    trainer = PPOTrainer(BothFlagsEnv(inner), pol, PPOConfig(n_steps=64, minibatch_size=32), seed=0)
+
+    stats = TrainStats()
+    trainer.collect(60, stats)
+    buf = trainer.buffer
+    assert len(stats.episode_returns) == 20
+    assert sum(buf.terminals) == 20, "a both-flags end must still be a boundary"
+    assert all(tv is None for tv in buf.truncated_values)
 
 
 # --- device -----------------------------------------------------------

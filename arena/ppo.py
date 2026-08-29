@@ -186,19 +186,29 @@ class PPOTrainer:
             next_obs, reward, terminated, truncated, _ = self.env.step(a)
             self._episode_return += float(reward)
 
+            # Every `done` step MUST become an episode boundary in the buffer —
+            # either a terminal (no bootstrap) or a truncation (bootstrap from
+            # the cut state's value). Deriving `terminal` from `done` rather than
+            # from `terminated` alone is what makes that structural: an env that
+            # raises both flags at once (as ARENAEnv did before the M9 audit) can
+            # no longer produce a boundary that GAE cannot see, which silently
+            # bled advantages across ~90% of episode ends.
+            done = terminated or truncated
+            bootstrap = truncated and not terminated
+
             truncated_value = None
-            if truncated and not terminated:
+            if bootstrap:
                 with torch.no_grad():
                     _, v = self.policy(to_batch(next_obs, self.device))
                 truncated_value = float(v.item())
 
             self.buffer.add(
                 self._obs, a, float(logprob.item()), float(reward), float(value.item()),
-                terminal=bool(terminated and not truncated),
+                terminal=bool(done and not bootstrap),
                 truncated_value=truncated_value,
             )
 
-            if terminated or truncated:
+            if done:
                 stats.episode_returns.append(self._episode_return)
                 self._episode_return = 0.0
                 self._obs = self._reset_env()
@@ -289,13 +299,20 @@ class PPOTrainer:
 
 
 def evaluate_policy(env, policy: ActorCritic, n_episodes: int = 20, *,
-                    deterministic: bool = True, device: torch.device | str = "cpu") -> dict:
-    """Run ``n_episodes`` and report mean return plus the env's own info flags."""
+                    deterministic: bool = True, device: torch.device | str = "cpu",
+                    seed: int | None = None) -> dict:
+    """Run ``n_episodes`` and report mean return plus the env's own info flags.
+
+    ``seed`` re-seeds the env's scenario stream on the first reset, so two calls
+    with the same seed score the two policies on the *same* episodes. Without it
+    each call continues wherever the stream happened to be — fine for a one-off
+    number, but it turns a before/after comparison into a partly-unpaired one.
+    """
     returns: list[float] = []
     completed = 0
     quarantined = 0
-    for _ in range(n_episodes):
-        obs, _ = env.reset()
+    for i in range(n_episodes):
+        obs, _ = env.reset(seed=seed) if (i == 0 and seed is not None) else env.reset()
         total = 0.0
         info: dict = {}
         while True:

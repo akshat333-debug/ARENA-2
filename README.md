@@ -18,6 +18,7 @@ attacks that *don't even adapt*. ARENA measures what happens when the attacker l
 | [project.md](project.md) | Requirements, game model, scope decisions, datasets, risks |
 | [architecture.md](architecture.md) | Tech stack, env design, anti-leakage rule, module layout |
 | [modular-plan.md](modular-plan.md) | M1–M11 build order and per-module test gates |
+| [docs/audit-m1-m9.md](docs/audit-m1-m9.md) | **Full audit — 3 bugs found, and the corrected headline result** |
 
 ## Status
 
@@ -31,9 +32,10 @@ attacks that *don't even adapt*. ARENA measures what happens when the attacker l
 | **M6** — alternating self-play loop | ✅ done |
 | **M7** — league / opponent-checkpoint pool | ✅ done |
 | **M8** — evaluation harness (exploitability + AUROC/TPR) | ✅ done |
-| **M9** — public-dataset fetch (TAMAS, Toucan) | ✅ done — 328 fast + slow tests passing |
+| **M9** — public-dataset fetch (TAMAS, Toucan) | ✅ done |
+| **Audit M1–M9** | ✅ done — 3 bugs fixed; 333 fast + 32 slow passing. [Read it](docs/audit-m1-m9.md) |
 | M10 — cached Ollama client + transfer sweep | next |
-| M11 | pending |
+| M11 — leaderboard + report (must close the exploitability gap) | pending |
 
 ## Install
 
@@ -233,10 +235,13 @@ python3 scripts/run_eval.py small.yaml --curve runs/sp.pt # exploitability curve
   baselines + any ARENA Blue) on one scale, calibrating each to a matched ~5% FPR before
   measuring exploitability so "low exploitability" means "discriminates", not "quarantines
   everything".
-- **The headline result** (`docs/m8-evaluation.md`): an ARENA-trained Blue reaches
-  **exploitability 0.12** vs **0.38** for the CASPIAN-style causal monitor and **0.56** for
-  the allow-list (≈ TAMAS's ~80% failure). The co-evolved defender is ~3× less exploitable
-  than the strongest static baseline, on the project's own primary metric.
+- **The result** (`docs/m8-evaluation.md`): at `small.yaml` scale the co-evolved Blue
+  reaches **exploitability 0.78**, *above* the CASPIAN-style causal monitor's **0.69** —
+  it is not yet less exploitable than the static baselines, and the curve across four
+  self-play generations is flat. An earlier version of this README claimed the opposite
+  (0.12 vs 0.38, "~3× less exploitable"); that was an artifact of a PPO bug found in the
+  M1–M9 audit and is corrected in [docs/audit-m1-m9.md](docs/audit-m1-m9.md). The
+  allow-list's 0.78 does now match TAMAS's reported ~80% static-baseline failure.
 
 ## What M9 gives you
 
