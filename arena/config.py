@@ -8,6 +8,7 @@ Sections are added as modules land; this file currently covers M1–M2.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -30,6 +31,10 @@ class ScenarioConfig(BaseModel):
     n_tools_max: int = Field(default=12, ge=4)
     adversarial_ratio: float = Field(default=0.5, ge=0.0, le=1.0)
     max_steps: int = Field(default=12, ge=1)
+    #: Where benign traffic comes from. "synthetic" = the uniform BenignRoller
+    #: (M1). "toucan" = draw tool categories from the Toucan-1.5M profile fetched
+    #: by ``arena.data.fetch`` (M9); falls back to synthetic if ``data/`` absent.
+    benign_source: Literal["synthetic", "toucan"] = "synthetic"
 
     @model_validator(mode="after")
     def _check(self) -> "ScenarioConfig":

@@ -64,6 +64,9 @@ def attack_success_rate(blue: BluePolicy, n: int, *, config: ArenaConfig, seed: 
 def false_quarantine_rate(blue: BluePolicy, n: int, *, config: ArenaConfig, seed: int = 0) -> float:
     cfg = config
     gen = ScenarioGenerator.from_config(cfg.scenario, seed=seed + 10_000)
+    from arena.baselines.collect import _benign_profile
+
+    profile = _benign_profile(cfg)
     done = 0
     quarantined = 0
     tries = 0
@@ -73,7 +76,7 @@ def false_quarantine_rate(blue: BluePolicy, n: int, *, config: ArenaConfig, seed
         if sc.is_adversarial:
             continue
         env = ARENAEnv(cfg, scenario=sc)
-        _play(env, BenignRoller(sc, seed=seed + done), blue, seed=seed + done)
+        _play(env, BenignRoller(sc, seed=seed + done, profile=profile), blue, seed=seed + done)
         quarantined += int(env.last_outcome.quarantined)
         done += 1
     return quarantined / max(1, done)

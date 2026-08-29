@@ -54,22 +54,42 @@ class BenignRoller:
     *does* hit external sinks. What it never does is let sensitive data reach a
     sink: once it has touched a source this episode, it stops calling sinks. So no
     episode it drives is accidentally an attack, yet a lone sensitive read is not
-    a give-away tell (which would unfairly flatter the single-shot detector)."""
+    a give-away tell (which would unfairly flatter the single-shot detector).
 
-    def __init__(self, scenario: Scenario, seed: int = 0) -> None:
+    With ``profile`` (a :class:`~arena.data.toucan.BenignProfile` built from
+    Toucan-1.5M, M9) the per-step tool choice is drawn from real benign category
+    frequencies — read / act / other — instead of uniformly over the registry.
+    Without it, choice is uniform (the M1–M8 behaviour, unchanged)."""
+
+    def __init__(self, scenario: Scenario, seed: int = 0, *, profile=None) -> None:
         self._reg = scenario.registry
         self._nonsink = [i for i, t in enumerate(self._reg) if not t.is_sink]
         self._nonsink = self._nonsink or [0]
         self._all = list(range(len(self._reg)))
         self._rng = np.random.default_rng(seed)
         self._touched_source = False
+        self._profile = profile
+        if profile is not None:
+            from arena.data.toucan import category_of_spec
+
+            self._by_cat: dict[str, list[int]] = {}
+            for i, t in enumerate(self._reg):
+                self._by_cat.setdefault(category_of_spec(t), []).append(i)
 
     def reset(self) -> None:
         self._touched_source = False
 
+    def _pick(self, pool: list[int]) -> int:
+        if self._profile is None:
+            return int(self._rng.choice(pool))
+        allowed = set(pool)
+        cat = self._profile.sample_category(self._rng)
+        cands = [i for i in self._by_cat.get(cat, ()) if i in allowed] or pool
+        return int(self._rng.choice(cands))
+
     def __call__(self, red_obs: dict) -> int:
         pool = self._nonsink if self._touched_source else self._all
-        i = int(self._rng.choice(pool))
+        i = self._pick(pool)
         if self._reg[i].is_source:
             self._touched_source = True
         return i
@@ -91,10 +111,18 @@ class AdaptiveRed:
     :class:`ScriptedAttacker` is built for each adversarial scenario.
     """
 
-    def __init__(self, env, *, seed: int = 0, attacker: RedPolicy | None = None) -> None:
+    def __init__(
+        self,
+        env,
+        *,
+        seed: int = 0,
+        attacker: RedPolicy | None = None,
+        benign_profile=None,
+    ) -> None:
         self._env = getattr(env, "aec", env)
         self._seed = seed
         self._attacker = attacker
+        self._benign_profile = benign_profile
         self._episode: int | None = None
         self._inner = None
 
@@ -112,7 +140,9 @@ class AdaptiveRed:
             if sc.is_adversarial:
                 self._inner = self._attacker if self._attacker is not None else ScriptedAttacker(sc)
             else:
-                self._inner = BenignRoller(sc, seed=self._seed + ep)
+                self._inner = BenignRoller(
+                    sc, seed=self._seed + ep, profile=self._benign_profile
+                )
         return self._inner(red_obs)
 
 

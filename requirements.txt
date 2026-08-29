@@ -19,7 +19,9 @@ torch>=2.2
 # tests
 pytest>=8.0
 
+# M9 - dataset fetch: no new deps. Uses stdlib urllib/json/hashlib/tarfile and
+#      the HF datasets-server rows API (JSON), not parquet. See THIRD_PARTY.md.
+
 # --- added in later modules ---
 # M8  matplotlib
-# M9  huggingface_hub, pandas, pyarrow
 # M10 ollama

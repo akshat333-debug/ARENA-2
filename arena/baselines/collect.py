@@ -19,6 +19,16 @@ from arena.scenarios import ScenarioGenerator
 from arena.scripted import BenignRoller, ScriptedAttacker
 from arena.tools import ToolSpec
 
+
+def _benign_profile(cfg: ArenaConfig):
+    """The Toucan profile if the config asks for it and ``data/`` has it, else
+    ``None`` -> the synthetic uniform roller."""
+    if getattr(cfg.scenario, "benign_source", "synthetic") != "toucan":
+        return None
+    from arena.data.toucan import load_profile
+
+    return load_profile()
+
 RedPolicy = Callable[[dict], int]
 BluePolicy = Callable[[dict], int]
 
@@ -78,6 +88,7 @@ def collect_decisions(
     cfg = config or ArenaConfig()
     blue = blue or (lambda o: ALLOW)
     gen = ScenarioGenerator.from_config(cfg.scenario, seed=seed)
+    profile = _benign_profile(cfg)
 
     rows: list[Decision] = []
     made = 0
@@ -92,7 +103,11 @@ def collect_decisions(
             continue
 
         env = ARENAEnv(cfg, scenario=sc)
-        red = ScriptedAttacker(sc) if sc.is_adversarial else BenignRoller(sc, seed=seed + made)
+        red = (
+            ScriptedAttacker(sc)
+            if sc.is_adversarial
+            else BenignRoller(sc, seed=seed + made, profile=profile)
+        )
         caps = _rollout(env, red, blue, seed=seed + made)
         made += 1
 

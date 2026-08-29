@@ -4,8 +4,9 @@ __pycache__/
 .ruff_cache/
 .DS_Store
 
-# fetched datasets - never vendored (see project.md S13)
-data/
+# fetched datasets - never vendored (see project.md S13). Anchored to repo root
+# so it does NOT swallow the arena/data/ source package.
+/data/
 
 # training artifacts
 runs/

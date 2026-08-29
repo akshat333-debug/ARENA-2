@@ -30,9 +30,10 @@ attacks that *don't even adapt*. ARENA measures what happens when the attacker l
 | **M5** — Red/Blue policies + PPO | ✅ done |
 | **M6** — alternating self-play loop | ✅ done |
 | **M7** — league / opponent-checkpoint pool | ✅ done |
-| **M8** — evaluation harness (exploitability + AUROC/TPR) | ✅ done — 296 fast + slow tests passing |
-| M9 — public-dataset fetch (TAMAS, Toucan) | next |
-| M10–M11 | pending |
+| **M8** — evaluation harness (exploitability + AUROC/TPR) | ✅ done |
+| **M9** — public-dataset fetch (TAMAS, Toucan) | ✅ done — 328 fast + slow tests passing |
+| M10 — cached Ollama client + transfer sweep | next |
+| M11 | pending |
 
 ## Install
 
@@ -236,3 +237,22 @@ python3 scripts/run_eval.py small.yaml --curve runs/sp.pt # exploitability curve
   **exploitability 0.12** vs **0.38** for the CASPIAN-style causal monitor and **0.56** for
   the allow-list (≈ TAMAS's ~80% failure). The co-evolved defender is ~3× less exploitable
   than the strongest static baseline, on the project's own primary metric.
+
+## What M9 gives you
+
+```bash
+python3 scripts/fetch_data.py            # ~8k Toucan rows + the TAMAS tarball -> data/ (git-ignored)
+```
+
+- **`arena/data/fetch.py`** — idempotent fetch of the two public datasets
+  ([`THIRD_PARTY.md`](THIRD_PARTY.md)): **TAMAS** (MIT / CDLA-Permissive-2.0) as a
+  tarball for taxonomy provenance, **Toucan-1.5M** (Apache-2.0) as an ~8k-row JSON
+  subsample via the HF datasets-server rows API. Writes `data/manifest.json` with a
+  sha256 + licence + UTC retrieval time per file; a re-run verifies the hashes and
+  touches the network only if something changed. **Zero new runtime dependencies** —
+  stdlib `urllib` / `json` / `hashlib`.
+- **`arena/data/toucan.py`** — turns the subsample into a small `BenignProfile`
+  (read / act / other call-category frequencies + a trajectory-length histogram).
+  With `scenario.benign_source: toucan` the `BenignRoller` draws tool categories from
+  real benign traffic instead of uniformly; it falls back to synthetic if `data/` is
+  absent, so the tests never need the datasets. See [docs/m9-data.md](docs/m9-data.md).
