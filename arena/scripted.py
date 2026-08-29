@@ -1,15 +1,21 @@
-"""Scripted (non-learned) policies for both sides.
+"""Scripted (non-learned) policies for both sides, plus the opponent wrapper that
+mixes an attacker with benign traffic over a scenario distribution.
 
-Used to generate labelled traffic for the M4 baselines, as opponents in the M8
-exploitability sweep, and as sanity references throughout. None of these learn.
+Used to generate labelled traffic for the M4 baselines, as Blue's opponent during
+self-play (M6), as opponents in the M8 exploitability sweep, and as sanity
+references throughout.
 """
 
 from __future__ import annotations
+
+from collections.abc import Callable
 
 import numpy as np
 
 from arena.features import ALLOW, QUARANTINE
 from arena.scenarios import ObjectiveKind, Scenario
+
+RedPolicy = Callable[[dict], int]
 
 
 class ScriptedAttacker:
@@ -69,20 +75,26 @@ class BenignRoller:
         return i
 
 
-class AdaptiveScriptedRed:
+class AdaptiveRed:
     """A Red opponent for a *distribution* of scenarios.
 
-    :class:`ScriptedAttacker` and :class:`BenignRoller` are built per scenario,
-    but an env driven by a config draws a fresh scenario every reset. This wrapper
-    watches the live env and rebuilds the right inner policy whenever the episode
-    changes: the scripted chain on adversarial episodes, benign traffic on benign
-    ones. That mixture is what Blue has to be trained against — a Blue that only
-    ever sees attacks learns to quarantine everything.
+    An env driven by a config draws a fresh scenario every reset, but
+    :class:`ScriptedAttacker` / :class:`BenignRoller` are per-scenario. This
+    wrapper watches the live env and switches inner policy whenever the episode
+    changes: an attacker on adversarial episodes, benign traffic on benign ones.
+    That mixture is what Blue has to be trained against — a Blue that only ever
+    sees attacks learns to quarantine everything (M5).
+
+    ``attacker`` overrides the adversarial branch with a fixed callable — this is
+    how self-play (M6) feeds Blue a *frozen learned* Red on attack episodes while
+    still keeping benign traffic realistic. When ``None`` (default) a fresh
+    :class:`ScriptedAttacker` is built for each adversarial scenario.
     """
 
-    def __init__(self, env, *, seed: int = 0) -> None:
+    def __init__(self, env, *, seed: int = 0, attacker: RedPolicy | None = None) -> None:
         self._env = getattr(env, "aec", env)
         self._seed = seed
+        self._attacker = attacker
         self._episode: int | None = None
         self._inner = None
 
@@ -97,11 +109,15 @@ class AdaptiveScriptedRed:
         ep = self._env.episode_index
         if ep != self._episode:
             self._episode = ep
-            self._inner = (
-                ScriptedAttacker(sc) if sc.is_adversarial
-                else BenignRoller(sc, seed=self._seed + ep)
-            )
+            if sc.is_adversarial:
+                self._inner = self._attacker if self._attacker is not None else ScriptedAttacker(sc)
+            else:
+                self._inner = BenignRoller(sc, seed=self._seed + ep)
         return self._inner(red_obs)
+
+
+#: Back-compat alias — the class predates the ``attacker`` parameter.
+AdaptiveScriptedRed = AdaptiveRed
 
 
 def passive_blue(blue_obs: dict) -> int:

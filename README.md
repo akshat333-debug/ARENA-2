@@ -27,9 +27,10 @@ attacks that *don't even adapt*. ARENA measures what happens when the attacker l
 | **M2** — taint tracker, reward engine | ✅ done |
 | **M3** — PettingZoo env + Gym wrapper | ✅ done |
 | **M4** — features + 3 baseline defenders | ✅ done |
-| **M5** — Red/Blue policies + PPO | ✅ done — 240 tests passing |
-| M6 — alternating self-play loop | next |
-| M7–M11 | pending |
+| **M5** — Red/Blue policies + PPO | ✅ done |
+| **M6** — alternating self-play loop | ✅ done — 258 tests passing |
+| M7 — league / opponent-checkpoint pool | next |
+| M8–M11 | pending |
 
 ## Install
 
@@ -174,3 +175,21 @@ reproducible from one number. Unknown keys are rejected rather than silently ign
 
 Third-party datasets (TAMAS, Toucan-1.5M) are fetched at M9, never vendored, and recorded
 with checksum and licence in `THIRD_PARTY.md`. See [project.md §13](project.md).
+
+## What M6 gives you
+
+```bash
+python3 scripts/train_selfplay.py small.yaml --generations 4 --steps 40000
+```
+
+- **`SelfPlayTrainer`** (`arena/selfplay.py`) — the alternating loop: freeze Blue → train
+  Red, freeze Red → train Blue, evaluate, repeat. Warm-starts each generation. Opponents
+  are frozen through `TorchPolicyAdapter` (no grad, params never optimised); tests prove
+  neither side's weights move while it is the frozen opponent.
+- Blue trains against `AdaptiveRed(attacker=frozen_red)` — the learned Red on attack
+  episodes, realistic benign traffic on the rest.
+- **What a 4-generation run shows** (`docs/m6-selfplay.md`): gens 0–1 work as intended —
+  Blue discriminates (quarantine rate ≈ adversarial rate), exploitability falls, Blue's
+  return climbs. Gens 2–3 drift toward `(passive Blue, weak Red)` — the non-transitive
+  self-play failure the proposal names. **This is what M7's opponent-checkpoint pool
+  exists to fix**; M6 ships the alternation mechanism, not a converged result.

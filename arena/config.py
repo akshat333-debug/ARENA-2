@@ -122,6 +122,23 @@ class PPOConfig(BaseModel):
         return self
 
 
+class SelfPlayConfig(BaseModel):
+    """Alternating self-play loop (arena/selfplay.py)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    n_generations: int = Field(default=4, ge=1)
+    #: PPO transitions per side, per generation. Blue needs enough per generation
+    #: to escape the paranoid basin from a cold start (~40k on small.yaml); Red
+    #: warms up faster. This is the single biggest lever on wall-clock.
+    steps_per_side: int = Field(default=40_000, ge=1)
+    #: Episodes used for the per-generation eval sweep.
+    eval_episodes: int = Field(default=200, ge=1)
+    #: Freeze opponents as stochastic (sample from their distribution) rather than
+    #: greedy — the learner should face the policy it will actually meet.
+    stochastic_opponent: bool = True
+
+
 class ArenaConfig(BaseModel):
     """Top-level config. One YAML file maps to one of these."""
 
@@ -134,6 +151,7 @@ class ArenaConfig(BaseModel):
     reward: RewardConfig = RewardConfig()
     policy: PolicyConfig = PolicyConfig()
     ppo: PPOConfig = PPOConfig()
+    selfplay: SelfPlayConfig = SelfPlayConfig()
 
     @model_validator(mode="after")
     def _propagate_seed(self) -> "ArenaConfig":
