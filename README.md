@@ -29,9 +29,10 @@ attacks that *don't even adapt*. ARENA measures what happens when the attacker l
 | **M4** — features + 3 baseline defenders | ✅ done |
 | **M5** — Red/Blue policies + PPO | ✅ done |
 | **M6** — alternating self-play loop | ✅ done |
-| **M7** — league / opponent-checkpoint pool | ✅ done — 284 tests passing |
-| M8 — evaluation harness (exploitability curves) | next |
-| M9–M11 | pending |
+| **M7** — league / opponent-checkpoint pool | ✅ done |
+| **M8** — evaluation harness (exploitability + AUROC/TPR) | ✅ done — 296 fast + slow tests passing |
+| M9 — public-dataset fetch (TAMAS, Toucan) | next |
+| M10–M11 | pending |
 
 ## Install
 
@@ -211,3 +212,27 @@ python3 scripts/train_selfplay.py small.yaml     # league is on by default
   (Blue's quarantine rate → ~0.01). The league keeps Blue facing strong past Reds, so it
   stays discriminating. `test_league_keeps_blue_discriminating_where_m6_drifts` asserts the
   final quarantine rate stays > 0.20. See `docs/m7-league.md`.
+
+## What M8 gives you
+
+```bash
+python3 scripts/run_eval.py small.yaml                    # baseline leaderboard
+python3 scripts/run_eval.py small.yaml --blue runs/sp.pt  # + ARENA-trained Blue
+python3 scripts/run_eval.py small.yaml --curve runs/sp.pt # exploitability curve over its league
+```
+
+- **`arena/eval/exploitability.py`** — the primary metric: freeze the defender, spawn a
+  *fresh* random Red, train it as a best response, report attack success. Measured on an
+  all-adversarial distribution so it is not capped at the scenario's adversarial ratio.
+  `fresh_red_start` (pre-training success ≈ chance) is the built-in no-warm-start check.
+- **`arena/eval/metrics.py`** — `roc_auc` / `roc_curve` / `tpr_at_fpr`, rank-based, checked
+  exact against `sklearn.metrics` and hand-computed fixtures. `tpr_at_fpr` is on CASPIAN's
+  scale (project.md §8).
+- **`arena/eval/harness.py`** — `evaluate_defenders` runs every defender (the 3 M4
+  baselines + any ARENA Blue) on one scale, calibrating each to a matched ~5% FPR before
+  measuring exploitability so "low exploitability" means "discriminates", not "quarantines
+  everything".
+- **The headline result** (`docs/m8-evaluation.md`): an ARENA-trained Blue reaches
+  **exploitability 0.12** vs **0.38** for the CASPIAN-style causal monitor and **0.56** for
+  the allow-list (≈ TAMAS's ~80% failure). The co-evolved defender is ~3× less exploitable
+  than the strongest static baseline, on the project's own primary metric.

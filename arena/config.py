@@ -149,6 +149,25 @@ class SelfPlayConfig(BaseModel):
     league_p_latest: float = Field(default=0.35, ge=0.0, le=1.0)
 
 
+class EvalConfig(BaseModel):
+    """Evaluation harness (arena/eval/)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: Best-response training budget for one exploitability measurement. Larger =
+    #: a tighter (higher, more honest) exploitability number, at linear cost.
+    br_steps: int = Field(default=20_000, ge=1)
+    #: Episodes for the post-best-response attack-success estimate.
+    n_eval_episodes: int = Field(default=300, ge=1)
+    #: Episodes whose Blue decisions feed the AUROC / TPR sweep.
+    n_decision_adv: int = Field(default=150, ge=1)
+    n_decision_benign: int = Field(default=150, ge=1)
+    #: Every trainable defender is calibrated to this per-decision false-positive
+    #: rate before its exploitability is measured, so "low exploitability" means
+    #: "discriminates well" and not "quarantines everything" (project.md S3.3).
+    calibration_fpr: float = Field(default=0.05, gt=0.0, lt=1.0)
+
+
 class ArenaConfig(BaseModel):
     """Top-level config. One YAML file maps to one of these."""
 
@@ -162,6 +181,7 @@ class ArenaConfig(BaseModel):
     policy: PolicyConfig = PolicyConfig()
     ppo: PPOConfig = PPOConfig()
     selfplay: SelfPlayConfig = SelfPlayConfig()
+    eval: EvalConfig = EvalConfig()
 
     @model_validator(mode="after")
     def _propagate_seed(self) -> "ArenaConfig":
