@@ -13,11 +13,13 @@ pettingzoo>=1.24
 # M4 - baselines
 scikit-learn>=1.3
 
+# M5 - policies + PPO
+torch>=2.2
+
 # tests
 pytest>=8.0
 
 # --- added in later modules ---
-# M5  torch
 # M8  matplotlib
 # M9  huggingface_hub, pandas, pyarrow
 # M10 ollama

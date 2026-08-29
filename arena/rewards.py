@@ -8,15 +8,20 @@ policy imports makes the reward logic unit-testable on hand-built outcomes.
            + w_plausibility * plausibility
            - w_step * n_steps
 
-    R_blue = + w_detect             [stopped an adversarial session before completion]
+    R_blue = + w_detect             [caught an in-flight attack: see below]
              + w_flag               [flagged a call genuinely on the attack chain]
              - w_miss               [objective completed undetected]
              - w_false_quarantine   [quarantined a benign session]
              - w_false_flag * k     [k flags that were not on the attack chain]
 
-``objective_completed`` already reflects whether Blue's quarantine prevented the
-final sink from executing (a quarantined call never runs), so no extra
-"caught in time" bookkeeping is needed here.
+**Detection credit requires evidence.** ``caught_in_flight`` is set by the env
+only when the quarantined call was demonstrably part of an attack already in
+progress — it either would have completed the objective, or sat on the live taint
+chain from a designated source. Quarantining the *first* call of a session earns
+nothing, even in an adversarial episode: at that point there is no evidence, and
+a defender that blocks every session's opening call is exactly the paranoia the
+game model says to penalise (proposal S3.3). Without this, blanket quarantine
+"detects" 100% of attacks and PPO converges straight to it.
 """
 
 from __future__ import annotations
@@ -41,8 +46,12 @@ class EpisodeOutcome:
     completion_step: int | None = None
     #: Steps at which Blue emitted a `flag` verdict.
     flagged_steps: tuple[int, ...] = ()
-    #: Ground-truth steps on the attack chain (``TaintTracker.attack_path``).
+    #: Ground-truth steps on the attack chain — the completed path if the attack
+    #: landed, otherwise the live in-flight chain (``TaintTracker.live_chain_steps``).
     malicious_steps: tuple[int, ...] = ()
+    #: The quarantine landed on a call that was demonstrably part of an attack
+    #: already in progress. Gates the detection reward — see the module docstring.
+    caught_in_flight: bool = False
 
     def __post_init__(self) -> None:
         if self.n_steps < 0:
@@ -57,6 +66,10 @@ class EpisodeOutcome:
             raise ValueError("a benign episode has no objective to complete")
         if self.malicious_steps and not self.is_adversarial:
             raise ValueError("a benign episode has no attack chain")
+        if self.caught_in_flight and not self.is_adversarial:
+            raise ValueError("a benign episode has no in-flight attack to catch")
+        if self.caught_in_flight and not self.quarantined:
+            raise ValueError("caught_in_flight requires a quarantine")
 
 
 @dataclass(frozen=True)
@@ -93,7 +106,7 @@ def compute_rewards(outcome: EpisodeOutcome, w: RewardConfig) -> RewardBreakdown
     blue_false_quarantine = 0.0
 
     if outcome.is_adversarial:
-        if outcome.quarantined and not outcome.objective_completed:
+        if outcome.quarantined and not outcome.objective_completed and outcome.caught_in_flight:
             blue_detect = w.w_detect
         if on_chain_flags:
             blue_flag = w.w_flag
@@ -160,6 +173,7 @@ def _demo() -> None:
     blue_wins = EpisodeOutcome(
         is_adversarial=True, objective_completed=False, n_steps=3, plausibility=0.8,
         quarantined=True, quarantine_step=2, flagged_steps=(1,), malicious_steps=(0, 1, 2),
+        caught_in_flight=True,
     )
     rb2 = compute_rewards(blue_wins, w)
     assert rb2.blue_detect == w.w_detect and rb2.red_evade == 0.0
@@ -171,6 +185,21 @@ def _demo() -> None:
         quarantined=True, quarantine_step=3,
     )
     assert compute_rewards(fp, w).r_blue == -w.w_false_quarantine
+
+    # A quarantine with no evidence behind it is not a detection, even though the
+    # episode was adversarial and nothing completed.
+    blind = EpisodeOutcome(
+        is_adversarial=True, objective_completed=False, n_steps=0, plausibility=1.0,
+        quarantined=True, quarantine_step=0, caught_in_flight=False,
+    )
+    assert compute_rewards(blind, w).blue_detect == 0.0
+
+    # The two degenerate defenders must score equally badly, or the trivial
+    # strategy wins and Blue never learns to discriminate.
+    p = 0.5
+    quarantine_always = p * w.w_detect - (1 - p) * w.w_false_quarantine
+    allow_always = -p * w.w_miss
+    assert abs(quarantine_always - allow_always) < 1e-9, (quarantine_always, allow_always)
 
     print("rewards._demo OK")
 

@@ -26,9 +26,10 @@ attacks that *don't even adapt*. ARENA measures what happens when the attacker l
 | **M1** — config, tools, scenarios | ✅ done |
 | **M2** — taint tracker, reward engine | ✅ done |
 | **M3** — PettingZoo env + Gym wrapper | ✅ done |
-| **M4** — features + 3 baseline defenders | ✅ done — 203 tests passing |
-| M5 — policies + PPO | next |
-| M6–M11 | pending |
+| **M4** — features + 3 baseline defenders | ✅ done |
+| **M5** — Red/Blue policies + PPO | ✅ done — 240 tests passing |
+| M6 — alternating self-play loop | next |
+| M7–M11 | pending |
 
 ## Install
 
@@ -138,6 +139,30 @@ python3 scripts/run_baselines.py small.yaml     # train + score the 3 baselines
   success (matching TAMAS's ~80–82%); single-shot TPR@5%FPR ≈ 0.19 — it *cannot* separate
   the split chain; causal monitor TPR@5%FPR ≈ 0.85. This is the yardstick ARENA's trained
   Blue must beat.
+
+## What M5 gives you
+
+```bash
+python3 scripts/train_ppo.py blue --steps 60000    # train the defender
+python3 scripts/train_ppo.py red  --steps 15000 --fixed-scenario
+```
+
+- **Policy networks** (`arena/policies.py`) — Blue is a GRU over the call sequence
+  (trajectory-level by construction); Red scores tools by embedding against a context built
+  from the task, objective and Blue's past verdicts, so one Red generalises across
+  registries and *adapts to the defender it faces*.
+- **Single-file PPO** (`arena/ppo.py`) — own loop, not SB3, with correct truncation
+  bootstrapping and dict-observation support. `TorchPolicyAdapter` makes a trained net a
+  drop-in for any scripted policy.
+- **Result**: trained Blue reaches **+0.52 to +0.61** mean reward across 5 seeds vs
+  **−0.09** for the M4 causal monitor, **−0.49** passive and **−0.54** paranoid — with a
+  quarantine rate ≈ the adversarial rate, i.e. it discriminates rather than blanket-blocks.
+  Red learns too (attack success 0.05 → 0.52 on a fixed scenario in 15k steps / ~6 s).
+
+See [docs/m5-policies-and-ppo.md](docs/m5-policies-and-ppo.md) for the three real bugs this
+module surfaced (detection credit needed evidence; the false-positive weight made paranoia
+optimal; scenario ids collided across resets) and the two training-stability findings
+(learning rate, and permissive initialisation taking Blue from 3/5 to 5/5 seeds learning).
 
 ## Configuration
 

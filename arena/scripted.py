@@ -69,6 +69,41 @@ class BenignRoller:
         return i
 
 
+class AdaptiveScriptedRed:
+    """A Red opponent for a *distribution* of scenarios.
+
+    :class:`ScriptedAttacker` and :class:`BenignRoller` are built per scenario,
+    but an env driven by a config draws a fresh scenario every reset. This wrapper
+    watches the live env and rebuilds the right inner policy whenever the episode
+    changes: the scripted chain on adversarial episodes, benign traffic on benign
+    ones. That mixture is what Blue has to be trained against — a Blue that only
+    ever sees attacks learns to quarantine everything.
+    """
+
+    def __init__(self, env, *, seed: int = 0) -> None:
+        self._env = getattr(env, "aec", env)
+        self._seed = seed
+        self._episode: int | None = None
+        self._inner = None
+
+    def __call__(self, red_obs: dict) -> int:
+        sc = self._env.scenario
+        if sc is None:
+            raise RuntimeError("env has no active scenario; call reset() first")
+        # Key off the env's episode counter, NOT scenario_id: reset(seed=) rebuilds
+        # the generator and restarts its counter, so ids repeat across resets. Keying
+        # off the id silently reuses a spent attacker, which emits filler actions —
+        # the episode then looks adversarial while no attack is actually played.
+        ep = self._env.episode_index
+        if ep != self._episode:
+            self._episode = ep
+            self._inner = (
+                ScriptedAttacker(sc) if sc.is_adversarial
+                else BenignRoller(sc, seed=self._seed + ep)
+            )
+        return self._inner(red_obs)
+
+
 def passive_blue(blue_obs: dict) -> int:
     """Allows everything — the fully-exploitable reference defender."""
     return ALLOW

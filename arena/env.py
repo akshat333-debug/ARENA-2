@@ -128,8 +128,19 @@ class ARENAEnv(AECEnv):
         self._flagged_steps: list[int] = []
         self._quarantined = False
         self._quarantine_step: int | None = None
+        self._caught_in_flight = False
         self._completion_step: int | None = None
         self._ended = False
+        # Monotonic across resets. Scenario ids restart when reset(seed=) rebuilds
+        # the generator, so they are NOT a safe "new episode" signal for anything
+        # holding per-episode state (see arena.scripted.AdaptiveScriptedRed).
+        self._episode_index = -1
+
+    @property
+    def episode_index(self) -> int:
+        """Number of completed ``reset`` calls minus one. Unique per episode for
+        the lifetime of this env, unlike ``scenario.scenario_id``."""
+        return self._episode_index
 
     # --- PettingZoo API ---------------------------------------------------
 
@@ -151,6 +162,7 @@ class ARENAEnv(AECEnv):
             assert self._gen is not None
             self._scenario = self._gen.sample()
 
+        self._episode_index += 1
         self._tracker.reset()
         self._history = []
         self._step_index = 0
@@ -158,6 +170,7 @@ class ARENAEnv(AECEnv):
         self._flagged_steps = []
         self._quarantined = False
         self._quarantine_step = None
+        self._caught_in_flight = False
         self._completion_step = None
         self._ended = False
 
@@ -220,6 +233,13 @@ class ARENAEnv(AECEnv):
         if verdict == QUARANTINE:
             self._quarantined = True
             self._quarantine_step = self._step_index
+            # Detection credit requires evidence: the blocked call must already be
+            # part of an attack in flight — it either would have completed the
+            # objective, or sits on the live taint chain from a designated source.
+            # Blocking a session's opening call earns nothing (see rewards.py).
+            self._caught_in_flight = self._tracker.would_advance_attack(
+                sc.objective, tool, self._step_index
+            )
             self._end_episode()
             return
 
@@ -245,7 +265,17 @@ class ARENAEnv(AECEnv):
         self._ended = True
         sc = self._scenario
         tools = [rc.tool for rc in self._history]
-        malicious = self._tracker.attack_path(sc.objective) if sc.objective is not None else ()
+        # On a completed attack the satisfying event's path is the ground truth.
+        # When Blue stopped it there is no satisfying event, so fall back to the
+        # chain that was in flight — otherwise a successful defence would report
+        # "no malicious steps" and Blue would lose its on-chain flag credit
+        # precisely because it won.
+        if sc.objective is None:
+            malicious = ()
+        else:
+            malicious = self._tracker.attack_path(sc.objective) or self._tracker.live_chain_steps(
+                sc.objective
+            )
 
         outcome = EpisodeOutcome(
             is_adversarial=sc.is_adversarial,
@@ -257,6 +287,7 @@ class ARENAEnv(AECEnv):
             completion_step=self._completion_step,
             flagged_steps=tuple(self._flagged_steps),
             malicious_steps=malicious,
+            caught_in_flight=self._caught_in_flight,
         )
         rb = compute_rewards(outcome, self._reward_cfg)
         self.rewards[RED] = float(rb.r_red)

@@ -31,6 +31,7 @@ def test_blue_wins_quarantine_before_completion():
     o = EpisodeOutcome(
         is_adversarial=True, objective_completed=False, n_steps=3, plausibility=1.0,
         quarantined=True, quarantine_step=2, flagged_steps=(1,), malicious_steps=(0, 1, 2),
+        caught_in_flight=True,
     )
     rb = compute_rewards(o, W)
     assert rb.blue_detect == W.w_detect

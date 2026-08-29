@@ -114,6 +114,7 @@ def test_blue_quarantine_at_the_sink_denies_the_reward(family):
         quarantine_step=sink_step,
         flagged_steps=(sink_step,),
         malicious_steps=tr.attack_path(sc.objective),
+        caught_in_flight=True,  # the blocked call was the sink that would complete it
     )
     rb = compute_rewards(outcome, W)
     assert rb.blue_detect == W.w_detect
