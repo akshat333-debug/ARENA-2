@@ -30,6 +30,7 @@ import torch
 
 from arena.config import ArenaConfig
 from arena.env import BLUE, RED, SingleAgentARENA
+from arena.league import FrozenPolicySampler, League, net_factory
 from arena.policies import ActorCritic, TorchPolicyAdapter, make_policy
 from arena.ppo import PPOTrainer, TrainStats, evaluate_policy, resolve_device
 from arena.scripted import AdaptiveRed
@@ -63,15 +64,22 @@ class SelfPlayTrainer:
         self.seed = seed
         self.device = torch.device(device) if device is not None else resolve_device(self.cfg.ppo.device)
 
-        ms = self.cfg.scenario.max_steps
-        nt = self.cfg.scenario.n_tools_max
-        self.red: ActorCritic = make_policy("red", max_steps=ms, n_tools_max=nt,
+        self._ms = self.cfg.scenario.max_steps
+        self._nt = self.cfg.scenario.n_tools_max
+        self.red: ActorCritic = make_policy("red", max_steps=self._ms, n_tools_max=self._nt,
                                             cfg=self.cfg.policy, seed=seed).to(self.device)
-        self.blue: ActorCritic = make_policy("blue", max_steps=ms, n_tools_max=nt,
+        self.blue: ActorCritic = make_policy("blue", max_steps=self._ms, n_tools_max=self._nt,
                                              cfg=self.cfg.policy, seed=seed + 1).to(self.device)
         self.history: list[GenerationStats] = []
 
-    # --- frozen-opponent adapters ------------------------------------
+        sp = self.cfg.selfplay
+        self.league: League | None = None
+        if sp.use_league:
+            self.league = League(
+                pool_max=sp.league_pool_max, p_latest=sp.league_p_latest, seed=seed,
+            )
+
+    # --- frozen-opponent construction ------------------------------
 
     def _frozen(self, policy: ActorCritic) -> TorchPolicyAdapter:
         return TorchPolicyAdapter(
@@ -80,15 +88,38 @@ class SelfPlayTrainer:
             device=self.device,
         )
 
+    def _opponent_policy(self, env, opp_side: str, live: ActorCritic):
+        """The frozen opponent to train against.
+
+        With a league: a :class:`FrozenPolicySampler` that resamples a past
+        checkpoint of ``opp_side`` each episode, falling back to ``live`` while
+        that pool is still empty. Without one: just the current ``live`` policy
+        (the M6 behaviour)."""
+        if self.league is None:
+            return self._frozen(live)
+        return FrozenPolicySampler(
+            env, self.league, opp_side,
+            make_net=net_factory(opp_side, max_steps=self._ms, n_tools_max=self._nt,
+                                 cfg=self.cfg.policy),
+            fallback=live,
+            deterministic=not self.cfg.selfplay.stochastic_opponent,
+            device=self.device,
+        )
+
     def _red_env(self) -> SingleAgentARENA:
-        """Red learns against the frozen Blue across the scenario distribution."""
-        return SingleAgentARENA(RED, self._frozen(self.blue), config=self.cfg)
+        """Red learns against Blue (current, or a league sample) over the
+        scenario distribution."""
+        env = SingleAgentARENA(RED, lambda o: 0, config=self.cfg)
+        env._opponent = self._opponent_policy(env, "blue", self.blue)
+        return env
 
     def _blue_env(self) -> SingleAgentARENA:
-        """Blue learns against the frozen Red on adversarial episodes and against
-        realistic benign traffic on the rest."""
+        """Blue learns against Red (current, or a league sample) on adversarial
+        episodes, and against realistic benign traffic on the rest."""
         env = SingleAgentARENA(BLUE, lambda o: 0, config=self.cfg)
-        env._opponent = AdaptiveRed(env, seed=self.seed, attacker=self._frozen(self.red))
+        env._opponent = AdaptiveRed(
+            env, seed=self.seed, attacker=self._opponent_policy(env, "red", self.red)
+        )
         return env
 
     # --- one generation --------------------------------------------
@@ -118,11 +149,19 @@ class SelfPlayTrainer:
     def train(self, n_generations: int | None = None, *,
               callback: Callable[[GenerationStats], None] | None = None) -> list[GenerationStats]:
         gens = n_generations if n_generations is not None else self.cfg.selfplay.n_generations
-        for gen in range(gens):
+        base_gen = self.history[-1].generation + 1 if self.history else 0
+        for gen in range(base_gen, base_gen + gens):
             rs = self._train_side("red", gen)
             bs = self._train_side("blue", gen)
             stats = self._evaluate(gen, rs, bs)
             self.history.append(stats)
+            if self.league is not None:
+                # Snapshot both sides into the pool *after* the generation, so the
+                # next generation trains against this one's policies too.
+                self.league.add("red", gen, self.red.state_dict(),
+                                opponent_win_rate=stats.blue_return_vs_red)
+                self.league.add("blue", gen, self.blue.state_dict(),
+                                opponent_win_rate=stats.exploitability)
             if callback is not None:
                 callback(stats)
         return self.history
@@ -130,8 +169,13 @@ class SelfPlayTrainer:
     # --- persistence ---------------------------------------------
 
     def state_dict(self) -> dict:
-        return {"red": self.red.state_dict(), "blue": self.blue.state_dict()}
+        sd = {"red": self.red.state_dict(), "blue": self.blue.state_dict()}
+        if self.league is not None:
+            sd["league"] = self.league.state_dict()
+        return sd
 
     def load_state_dict(self, sd: dict) -> None:
         self.red.load_state_dict(sd["red"])
         self.blue.load_state_dict(sd["blue"])
+        if "league" in sd and self.league is not None:
+            self.league.load_state_dict(sd["league"])

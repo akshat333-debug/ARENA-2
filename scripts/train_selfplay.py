@@ -46,10 +46,14 @@ def main() -> None:
         cfg = cfg.model_copy(update={"selfplay": sp_cfg})
 
     print(f"config={cfg.name} seed={args.seed} "
-          f"generations={sp_cfg.n_generations} steps/side={sp_cfg.steps_per_side}")
+          f"generations={sp_cfg.n_generations} steps/side={sp_cfg.steps_per_side} "
+          f"league={'on' if sp_cfg.use_league else 'off'}")
 
     sp = SelfPlayTrainer(cfg, seed=args.seed)
     sp.train(callback=lambda s: print("  " + s.summary()))
+
+    if sp.league is not None:
+        print(f"  league pools: red={sp.league.pool_size('red')} blue={sp.league.pool_size('blue')}")
 
     if args.out:
         import torch

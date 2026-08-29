@@ -123,7 +123,7 @@ class PPOConfig(BaseModel):
 
 
 class SelfPlayConfig(BaseModel):
-    """Alternating self-play loop (arena/selfplay.py)."""
+    """Alternating self-play loop (arena/selfplay.py) and its league (arena/league.py)."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -137,6 +137,16 @@ class SelfPlayConfig(BaseModel):
     #: Freeze opponents as stochastic (sample from their distribution) rather than
     #: greedy — the learner should face the policy it will actually meet.
     stochastic_opponent: bool = True
+    #: Train each side against a *sample* of the opposing side's past checkpoints,
+    #: not only the current one (architecture.md S7). Off reproduces the M6 loop,
+    #: which drifts to (passive Blue, weak Red) after a couple of generations.
+    use_league: bool = True
+    #: Max checkpoints kept per side (oldest evicted, latest always retained).
+    #: None = unbounded.
+    league_pool_max: int | None = Field(default=8, ge=1)
+    #: Probability the opponent sampler returns the most recent checkpoint rather
+    #: than drawing uniformly from the whole pool.
+    league_p_latest: float = Field(default=0.35, ge=0.0, le=1.0)
 
 
 class ArenaConfig(BaseModel):

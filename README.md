@@ -28,9 +28,10 @@ attacks that *don't even adapt*. ARENA measures what happens when the attacker l
 | **M3** — PettingZoo env + Gym wrapper | ✅ done |
 | **M4** — features + 3 baseline defenders | ✅ done |
 | **M5** — Red/Blue policies + PPO | ✅ done |
-| **M6** — alternating self-play loop | ✅ done — 258 tests passing |
-| M7 — league / opponent-checkpoint pool | next |
-| M8–M11 | pending |
+| **M6** — alternating self-play loop | ✅ done |
+| **M7** — league / opponent-checkpoint pool | ✅ done — 284 tests passing |
+| M8 — evaluation harness (exploitability curves) | next |
+| M9–M11 | pending |
 
 ## Install
 
@@ -193,3 +194,20 @@ python3 scripts/train_selfplay.py small.yaml --generations 4 --steps 40000
   return climbs. Gens 2–3 drift toward `(passive Blue, weak Red)` — the non-transitive
   self-play failure the proposal names. **This is what M7's opponent-checkpoint pool
   exists to fix**; M6 ships the alternation mechanism, not a converged result.
+
+## What M7 gives you
+
+```bash
+python3 scripts/train_selfplay.py small.yaml     # league is on by default
+```
+
+- **`arena/league.py`** — `League` keeps per-side pools of past checkpoints (bounded,
+  oldest evicted, latest always kept). `FrozenPolicySampler` is an `obs -> int` opponent
+  that **resamples a checkpoint from the pool every episode**, so a training phase faces a
+  distribution of past opponents, not one fixed policy.
+- Wired into `SelfPlayTrainer`: after each generation both policies are snapshotted; the
+  next generation trains against a *sample* of the opponent's whole history.
+- **Why it exists**: M6 without it drifts to `(passive Blue, weak Red)` by generation 2–3
+  (Blue's quarantine rate → ~0.01). The league keeps Blue facing strong past Reds, so it
+  stays discriminating. `test_league_keeps_blue_discriminating_where_m6_drifts` asserts the
+  final quarantine rate stays > 0.20. See `docs/m7-league.md`.

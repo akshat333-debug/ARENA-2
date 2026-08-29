@@ -114,10 +114,23 @@ Small by default (`configs/small.yaml`): hidden 64–128, few layers. Sizes are 
 
 ## 7. Self-play + league
 
-Alternating PPO: freeze Blue → train Red; freeze Red → train Blue; repeat.
-Every `checkpoint_every` generations, the current policy is frozen into an **opponent pool**.
-Opponents are sampled from the pool (uniform, or prioritized by win-rate), never only the
-newest — the standard guard against cyclic, non-transitive strategies.
+Alternating PPO: freeze Blue → train Red; freeze Red → train Blue; repeat
+(`arena/selfplay.py`, M6).
+
+**Why the league is not optional.** M6 without it drifts: once Red is a *learned*
+policy rather than the always-succeeding scripted attacker, and Blue has beaten it, the
+next generation of Blue trains against a weak frozen Red, relaxes, and the pair slides to
+`(passive Blue, mediocre Red)` — the classic non-transitive failure. Measured on
+`small.yaml`: Blue's quarantine rate fell from ~0.55 (gen 1) to ~0.01 (gen 3).
+
+**The league** (`arena/league.py`, M7): after each generation, snapshot both policies into
+per-side pools (`League`, bounded, oldest evicted, latest always kept). When training a
+side, its opponent is a `FrozenPolicySampler` that **resamples a checkpoint from the other
+side's pool every episode** — with probability `p_latest` the newest, otherwise uniform
+over the whole pool. So Blue keeps facing strong past Reds and cannot forget how to stop
+them; Red keeps facing competent past Blues and cannot coast. Prioritised sampling by
+win-rate (PFSP) is a future refinement; uniform-with-latest-bias is enough to hold the
+line. `use_league` defaults on; off reproduces the M6 loop exactly.
 
 ## 8. Evaluation
 
