@@ -34,8 +34,25 @@ attacks that *don't even adapt*. ARENA measures what happens when the attacker l
 | **M8** — evaluation harness (exploitability + AUROC/TPR) | ✅ done |
 | **M9** — public-dataset fetch (TAMAS, Toucan) | ✅ done |
 | **Audit M1–M9** | ✅ done — 4 bugs fixed; 343 fast + 32 slow passing. [Read it](docs/audit-m1-m9.md) |
-| M10 — cached Ollama client + transfer sweep | next |
-| M11 — leaderboard + report (must close the exploitability gap) | pending |
+| **M10** — cached Ollama client + transfer sweep | ✅ done — 30 fast tests passing. [Read it](docs/m10-llm.md) |
+| **M11** — leaderboard + report | ✅ done — reproduce script, paper draft, plots. [Read it](report/paper.md) |
+
+## What Was Added (dev branch)
+
+All M10 and M11 modules were implemented on top of the existing M1–M9 codebase:
+
+| Addition | Files | Tests |
+|----------|-------|-------|
+| **M10: LLM payload sweep** | `arena/llm/__init__.py`, `client.py`, `payloads.py`, `sweep.py` | 30 fast (mocked) |
+| **M10: Sweep script** | `scripts/run_sweep.py` | — |
+| **M10: Config** | `arena/config.py` (`LLMConfig` section) | — |
+| **M11: Report helpers** | `arena/eval/report.py` (tables, plots, JSON) | 8 fast |
+| **M11: Reproduce script** | `scripts/reproduce.py` | — |
+| **M11: Paper draft** | `report/paper.md` | — |
+| **M10: Docs** | `docs/m10-llm.md` | — |
+| **Dependencies** | `requirements.txt` (`ollama>=0.4`, `matplotlib>=3.8`) | — |
+
+**Note on Ollama (M10):** The Ollama client code is fully implemented and tested with mocks, but the actual LLM integration was NOT tested with a running Ollama daemon because `qwen2.5:3b` was not pulled on this machine. The code degrades gracefully to templates when Ollama is unavailable. To use the full LLM sweep: `ollama pull qwen2.5:3b`.
 
 ## Install
 
@@ -263,3 +280,23 @@ python3 scripts/fetch_data.py            # ~8k Toucan rows + the TAMAS tarball -
   With `scenario.benign_source: toucan` the `BenignRoller` draws tool categories from
   real benign traffic instead of uniformly; it falls back to synthetic if `data/` is
   absent, so the tests never need the datasets. See [docs/m9-data.md](docs/m9-data.md).
+
+## What M10 gives you
+
+```bash
+python3 scripts/run_sweep.py small.yaml                    # templated + LLM sweep
+python3 scripts/run_sweep.py small.yaml --blue runs/sp.pt  # + ARENA-trained Blue
+```
+
+- **`arena/llm/client.py`** — cached Ollama client. Disk cache keyed by
+  `(model, prompt, options_hash)` so a sweep is re-runnable offline. `available()`
+  checks if the daemon is up and the model is pulled.
+- **`arena/llm/payloads.py`** — per-family prompt templates that ask the LLM to
+  produce realistic malicious payloads. A validity check ensures the output
+  encodes the attack intent; on failure we fall back to the M1 template payload.
+- **`arena/llm/sweep.py`** — runs `evaluate_defenders` twice: once with templated
+  payloads (standard) and once with LLM-rendered payloads (if Ollama is available).
+  Reports both leaderboards side by side.
+- **Degradation**: if Ollama is absent, the sweep runs with templates and labels
+  the output accordingly. Zero new runtime dependencies beyond `ollama`.
+- See [docs/m10-llm.md](docs/m10-llm.md) for details.

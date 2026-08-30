@@ -23,5 +23,5 @@ pytest>=8.0
 #      the HF datasets-server rows API (JSON), not parquet. See THIRD_PARTY.md.
 
 # --- added in later modules ---
-# M8  matplotlib
-# M10 ollama
+matplotlib>=3.8
+ollama>=0.4

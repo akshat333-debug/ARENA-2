@@ -173,6 +173,23 @@ class EvalConfig(BaseModel):
     calibration_fpr: float = Field(default=0.05, gt=0.0, lt=1.0)
 
 
+class LLMConfig(BaseModel):
+    """LLM eval sweep (arena/llm/, M10)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: Ollama model name for payload rendering.
+    model: str = "qwen2.5:3b"
+    #: Sampling temperature.
+    temperature: float = Field(default=0.7, ge=0.0, le=2.0)
+    #: Request timeout in seconds.
+    timeout: int = Field(default=60, ge=1)
+    #: Max retries on transient failures.
+    max_retries: int = Field(default=2, ge=0)
+    #: Directory for the disk cache (relative to repo root, git-ignored).
+    cache_dir: str = ".cache/llm"
+
+
 class ArenaConfig(BaseModel):
     """Top-level config. One YAML file maps to one of these."""
 
@@ -187,6 +204,7 @@ class ArenaConfig(BaseModel):
     ppo: PPOConfig = PPOConfig()
     selfplay: SelfPlayConfig = SelfPlayConfig()
     eval: EvalConfig = EvalConfig()
+    llm: LLMConfig = LLMConfig()
 
     @model_validator(mode="after")
     def _propagate_seed(self) -> "ArenaConfig":
