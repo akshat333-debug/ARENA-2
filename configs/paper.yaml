@@ -1,5 +1,11 @@
-# ARENA - paper scale. NEVER the default; needs more compute than an M3.
+# ARENA - paper scale. NEVER the default; needs far more compute than an M3.
 # Same code path as small.yaml, larger numbers only.
+#
+# This file previously overrode only the `scenario` section, so every training
+# and evaluation budget silently fell back to defaults tuned for small.yaml —
+# a *harder* problem (24 steps, up to 19 tools) on the *same* budget, which is
+# strictly worse than small.yaml rather than a scale-up. Found in the M1-M9
+# audit; the budgets below are the actual scale-up.
 name: paper
 seed: 0
 
@@ -16,3 +22,35 @@ scenario:
     - contradicting_agents
     - byzantine_agent
     - colluding_agents
+
+# Longer episodes and a bigger registry need more capacity than the laptop nets.
+policy:
+  hidden: 128
+  gru_hidden: 128
+  tool_embed: 64
+
+ppo:
+  n_steps: 4096
+  minibatch_size: 512
+  n_epochs: 4
+  lr: 0.001
+  total_steps: 200000
+
+# The lever the audit named first for closing the exploitability gap: Blue gets
+# ~6x the per-generation budget and 3x the generations it had at small scale.
+selfplay:
+  n_generations: 12
+  steps_per_side: 250000
+  eval_episodes: 400
+  use_league: true
+  league_pool_max: 16
+  league_p_latest: 0.3
+
+# A best response is only an upper bound on exploitability if it is given enough
+# budget to actually find the exploit. 20k against a 24-step episode is not.
+eval:
+  br_steps: 150000
+  n_eval_episodes: 500
+  n_decision_adv: 400
+  n_decision_benign: 400
+  calibration_fpr: 0.05

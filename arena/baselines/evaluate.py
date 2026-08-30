@@ -15,6 +15,8 @@ import numpy as np
 from arena.baselines.collect import Decision
 from arena.config import ArenaConfig
 from arena.env import RED, ARENAEnv
+from arena.eval.metrics import roc_auc
+from arena.eval.metrics import tpr_at_fpr as _tpr_at_fpr
 from arena.scenarios import ScenarioGenerator
 from arena.scripted import BenignRoller, ScriptedAttacker
 
@@ -95,37 +97,31 @@ def calibrate_threshold(baseline, benign_decisions: list[Decision], target_fpr: 
     return baseline.threshold
 
 
+# These two used to carry their own rank-AUROC and quantile-threshold
+# implementations, written before M8 existed. They agreed with
+# `arena.eval.metrics` exactly (checked over 910 decisions in the M1-M9 audit),
+# but two copies of a metric is one copy too many — and the local AUROC computed
+# its ranks twice, the first result dead. They now delegate to the M8 versions,
+# which are the ones verified against `sklearn.metrics`.
+
+
 def decision_auroc(score_fn: Callable[[dict], float], decisions: list[Decision]) -> float:
-    y = np.array([int(d.on_attack_path) for d in decisions])
-    if len(np.unique(y)) < 2:
+    """Per-decision AUROC of ``score_fn`` against the taint-graph ground truth."""
+    y = [int(d.on_attack_path) for d in decisions]
+    if len(set(y)) < 2:
         return float("nan")
-    s = np.array([score_fn(d.blue_obs) for d in decisions])
-    # rank-based AUROC, no sklearn dependency needed here
-    order = np.argsort(s, kind="mergesort")
-    ranks = np.empty(len(s), dtype=float)
-    ranks[order] = np.arange(1, len(s) + 1)
-    # average ranks for ties
-    _, inv, counts = np.unique(s, return_inverse=True, return_counts=True)
-    csum = np.cumsum(counts)
-    start = csum - counts
-    avg = (start + csum + 1) / 2.0
-    ranks = avg[inv]
-    n_pos = int(y.sum())
-    n_neg = len(y) - n_pos
-    auc = (ranks[y == 1].sum() - n_pos * (n_pos + 1) / 2) / (n_pos * n_neg)
-    return float(auc)
+    return roc_auc([score_fn(d.blue_obs) for d in decisions], y)
 
 
 def tpr_at_fpr(score_fn: Callable[[dict], float], decisions: list[Decision], fpr: float = 0.05) -> float:
     """Per-decision true-positive rate at a fixed per-decision false-positive
     rate. The threshold is the ``1 - fpr`` quantile of scores on the off-path
     (benign) decisions; TPR is measured on the on-path decisions."""
-    neg = np.array([score_fn(d.blue_obs) for d in decisions if not d.on_attack_path])
-    pos = np.array([score_fn(d.blue_obs) for d in decisions if d.on_attack_path])
-    if len(neg) == 0 or len(pos) == 0:
-        return float("nan")
-    thr = np.nextafter(float(np.quantile(neg, 1.0 - fpr)), np.inf)
-    return float(np.mean(pos >= thr))
+    return _tpr_at_fpr(
+        [score_fn(d.blue_obs) for d in decisions],
+        [int(d.on_attack_path) for d in decisions],
+        fpr,
+    )
 
 
 def score_baseline(

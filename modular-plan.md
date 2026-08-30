@@ -43,6 +43,13 @@ path, all fixed — see [docs/audit-m1-m9.md](docs/audit-m1-m9.md).
    sample of *past* Blues, capped at `adversarial_ratio`, not the current Blue.
 3. `eval/harness.py` scored a learned Blue stochastically against deterministic
    baselines.
+4. `configs/paper.yaml` overrode only the `scenario` section, so the "scale-up
+   target" ran a harder problem on `small.yaml`'s training budget. It now scales
+   `policy`, `ppo`, `selfplay` and `eval` too.
+
+New `tests/test_contracts.py` (10 tests) covers the module **hand-offs** — where
+all three measurement bugs lived and where nothing was testing. Mutation-checked:
+reintroducing bug 1 fails it immediately.
 
 **Consequence:** the M8 headline ("~3× less exploitable than the strongest static
 baseline") was an artifact and is withdrawn. Re-measured, `arena_blue`

@@ -33,7 +33,7 @@ attacks that *don't even adapt*. ARENA measures what happens when the attacker l
 | **M7** — league / opponent-checkpoint pool | ✅ done |
 | **M8** — evaluation harness (exploitability + AUROC/TPR) | ✅ done |
 | **M9** — public-dataset fetch (TAMAS, Toucan) | ✅ done |
-| **Audit M1–M9** | ✅ done — 3 bugs fixed; 333 fast + 32 slow passing. [Read it](docs/audit-m1-m9.md) |
+| **Audit M1–M9** | ✅ done — 4 bugs fixed; 343 fast + 32 slow passing. [Read it](docs/audit-m1-m9.md) |
 | M10 — cached Ollama client + transfer sweep | next |
 | M11 — leaderboard + report (must close the exploitability gap) | pending |
 
@@ -173,8 +173,10 @@ optimal; scenario ids collided across resets) and the two training-stability fin
 ## Configuration
 
 Scale lives entirely in YAML — `small.yaml` (default, M3-friendly) and `paper.yaml`
-(scale-up). A single top-level `seed:` propagates to every section, so a whole run is
-reproducible from one number. Unknown keys are rejected rather than silently ignored.
+(scale-up: bigger scenarios *and* bigger nets, rollouts, generations and evaluation
+budgets — needs real compute, not a laptop). A single top-level `seed:` propagates to
+every section, so a whole run is reproducible from one number. Unknown keys are rejected
+rather than silently ignored.
 
 ## Licence and attribution
 
