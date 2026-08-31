@@ -16,9 +16,11 @@ Two pieces:
   ``TorchPolicyAdapter.act`` is under ``no_grad`` and the sampled parameters are
   never handed to an optimiser.
 
-Prioritised sampling by win-rate (PFSP) is a future refinement; M7 ships uniform
-sampling with a tunable bias toward the latest checkpoint, which is enough to
-stop the drift.
+Sampling is uniform-with-a-latest-bias by default. Setting ``pfsp=True`` switches
+to **prioritised fictitious self-play**: checkpoints the learner is currently
+*losing* to are drawn more often, so the training budget goes where the learner
+is actually weak instead of being spread evenly over opponents it has already
+solved (Vinyals et al. 2019).
 """
 
 from __future__ import annotations
@@ -44,8 +46,10 @@ class Checkpoint:
     side: str
     generation: int
     state_dict: dict = field(repr=False)
-    #: Optional: fraction of episodes the *other* side won against this one when
-    #: it was added. Unused by uniform sampling; kept for a future PFSP mode.
+    #: Fraction of episodes the *other* side won against this checkpoint when it
+    #: was added — i.e. how well the learner does against it. Low = this
+    #: checkpoint is hard for the learner. Ignored by uniform sampling; it is
+    #: what PFSP prioritises on.
     opponent_win_rate: float | None = None
 
     def key(self) -> tuple[str, int]:
@@ -59,13 +63,19 @@ class League:
         pool_max: int | None = None,
         p_latest: float = 0.3,
         seed: int = 0,
+        pfsp: bool = False,
+        pfsp_power: float = 2.0,
     ) -> None:
         if pool_max is not None and pool_max < 1:
             raise ValueError(f"pool_max must be >= 1 or None, got {pool_max}")
         if not 0.0 <= p_latest <= 1.0:
             raise ValueError(f"p_latest must be in [0, 1], got {p_latest}")
+        if pfsp_power < 0.0:
+            raise ValueError(f"pfsp_power must be >= 0, got {pfsp_power}")
         self.pool_max = pool_max
         self.p_latest = p_latest
+        self.pfsp = pfsp
+        self.pfsp_power = pfsp_power
         self._pools: dict[str, list[Checkpoint]] = {"red": [], "blue": []}
         self._rng = np.random.default_rng(seed)
 
@@ -104,14 +114,40 @@ class League:
 
     def sample(self, side: str) -> Checkpoint:
         """Draw an opponent checkpoint. With probability ``p_latest`` return the
-        most recent; otherwise draw uniformly from the whole pool (which also
-        contains the latest, so it is never excluded)."""
+        most recent; otherwise draw from the pool — uniformly, or PFSP-weighted
+        when ``pfsp`` is on."""
         pool = self._pools[side]
         if not pool:
             raise IndexError(f"{side} pool is empty")
         if len(pool) == 1 or self._rng.random() < self.p_latest:
             return pool[-1]
-        return pool[int(self._rng.integers(len(pool)))]
+        if not self.pfsp:
+            return pool[int(self._rng.integers(len(pool)))]
+        w = self._pfsp_weights(side)
+        return pool[int(self._rng.choice(len(pool), p=w))]
+
+    def _pfsp_weights(self, side: str) -> np.ndarray:
+        """PFSP weights over the pool: ``(1 - opponent_win_rate) ** pfsp_power``,
+        normalised.
+
+        ``opponent_win_rate`` is how well the *learner* does against a
+        checkpoint, so ``1 - rate`` is how hard that checkpoint is and the
+        budget flows toward the ones still beating the learner. A checkpoint
+        stored without a rate falls back to the pool mean, so a partially
+        annotated pool degrades to near-uniform rather than to a divide-by-zero.
+        """
+        pool = self._pools[side]
+        rates = [c.opponent_win_rate for c in pool]
+        known = [r for r in rates if r is not None]
+        default = float(np.mean(known)) if known else 0.5
+        hardness = np.array(
+            [(1.0 - (r if r is not None else default)) for r in rates], dtype=np.float64
+        )
+        hardness = np.clip(hardness, 0.0, 1.0) ** self.pfsp_power
+        total = hardness.sum()
+        if total <= 0.0:  # every opponent already fully solved -> uniform
+            return np.full(len(pool), 1.0 / len(pool))
+        return hardness / total
 
     def sample_probs(self, side: str) -> np.ndarray:
         """The exact per-checkpoint probability :meth:`sample` induces — for
@@ -121,7 +157,8 @@ class League:
             return np.zeros(0)
         if n == 1:
             return np.ones(1)
-        p = np.full(n, (1.0 - self.p_latest) / n)
+        base = self._pfsp_weights(side) if self.pfsp else np.full(n, 1.0 / n)
+        p = (1.0 - self.p_latest) * base
         p[-1] += self.p_latest
         return p
 
@@ -131,6 +168,8 @@ class League:
         return {
             "pool_max": self.pool_max,
             "p_latest": self.p_latest,
+            "pfsp": self.pfsp,
+            "pfsp_power": self.pfsp_power,
             "pools": {
                 side: [
                     {"side": c.side, "generation": c.generation,
@@ -144,6 +183,8 @@ class League:
     def load_state_dict(self, sd: dict) -> None:
         self.pool_max = sd["pool_max"]
         self.p_latest = sd["p_latest"]
+        self.pfsp = sd.get("pfsp", False)
+        self.pfsp_power = sd.get("pfsp_power", 2.0)
         self._pools = {
             side: [
                 Checkpoint(c["side"], c["generation"], _cpu_state_dict(c["state_dict"]),

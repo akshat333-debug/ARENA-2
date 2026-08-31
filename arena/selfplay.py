@@ -80,6 +80,7 @@ class SelfPlayTrainer:
         if sp.use_league:
             self.league = League(
                 pool_max=sp.league_pool_max, p_latest=sp.league_p_latest, seed=seed,
+                pfsp=sp.league_pfsp, pfsp_power=sp.league_pfsp_power,
             )
 
     # --- frozen-opponent construction ------------------------------

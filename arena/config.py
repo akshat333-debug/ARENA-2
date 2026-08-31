@@ -69,6 +69,18 @@ class RewardConfig(BaseModel):
     #: strategy, which is what the proposal's "precision, not paranoia" rules out.
     w_false_quarantine: float = Field(default=2.0, ge=0.0)
     w_false_flag: float = Field(default=0.25, ge=0.0)
+    #: Pay the on-chain flag credit in proportion to how much of the attack chain
+    #: Blue actually flagged, instead of a flat w_flag for hitting >= 1 step.
+    #:
+    #: The flat form is degenerate in a way that matters: flagging one malicious
+    #: call and flagging every malicious call earn exactly the same +w_flag, while
+    #: each *wrong* flag costs w_false_flag per flag. So the marginal value of a
+    #: second correct flag is zero and the marginal cost of a mistake is not —
+    #: Blue's cheapest policy is to flag at most once and then stop looking. This
+    #: makes the credit monotone in coverage, which is a finer gradient for the
+    #: same episode-level signal. Bounded by w_flag either way, so it cannot
+    #: outbid detection. Opt-in until measured. See docs/m11-gap.md.
+    dense_flag_credit: bool = False
 
 
 class PolicyConfig(BaseModel):
@@ -85,6 +97,19 @@ class PolicyConfig(BaseModel):
     gru_hidden: int = Field(default=64, ge=8)
     #: Embedding width used to score tools against the context (Red).
     tool_embed: int = Field(default=32, ge=4)
+    #: Concatenate the hand-engineered causal summary (`sequence_features`) onto
+    #: Blue's GRU state before the trunk.
+    #:
+    #: Motivation is a measured gap, not a hunch: the CASPIAN-style
+    #: `causal_monitor` baseline beats the co-evolved Blue on exploitability
+    #: (0.690 vs 0.780, docs/audit-m1-m9.md) while using nothing but these
+    #: features. Either the GRU cannot recover `sensitive_read_before_sink` from
+    #: raw call rows at this scale, or the gap is optimisation, not
+    #: representation. Handing Blue the same features answers which.
+    #:
+    #: No leakage: every one of these is derived from Blue's own observable call
+    #: rows (arena/features.py), never from the taint graph.
+    blue_causal_features: bool = False
 
 
 class PPOConfig(BaseModel):
@@ -150,8 +175,16 @@ class SelfPlayConfig(BaseModel):
     #: None = unbounded.
     league_pool_max: int | None = Field(default=8, ge=1)
     #: Probability the opponent sampler returns the most recent checkpoint rather
-    #: than drawing uniformly from the whole pool.
+    #: than drawing from the whole pool.
     league_p_latest: float = Field(default=0.35, ge=0.0, le=1.0)
+    #: Prioritised fictitious self-play: weight the non-latest draw toward
+    #: checkpoints the learner is *losing* to, instead of drawing uniformly
+    #: (Vinyals et al. 2019). Off by default — uniform is the M7 result, and this
+    #: stays opt-in until it is shown to help on this problem.
+    league_pfsp: bool = False
+    #: Sharpness of the PFSP weighting; 0 = uniform, higher = greedier toward the
+    #: hardest opponents.
+    league_pfsp_power: float = Field(default=2.0, ge=0.0)
 
 
 class EvalConfig(BaseModel):

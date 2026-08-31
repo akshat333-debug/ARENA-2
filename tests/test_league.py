@@ -206,3 +206,81 @@ def test_net_factory_builds_right_shape():
 def test_checkpoint_key_is_side_and_generation():
     ck = Checkpoint("red", 4, {})
     assert ck.key() == ("red", 4)
+
+
+# ---------------------------------------------------------------------------
+# PFSP — prioritised sampling by how hard each checkpoint is (M11 future-work #3)
+# ---------------------------------------------------------------------------
+
+
+def _pfsp_league(rates, *, p_latest=0.0, power=2.0, seed=0):
+    lg = League(p_latest=p_latest, seed=seed, pfsp=True, pfsp_power=power)
+    for i, r in enumerate(rates):
+        lg.add("blue", i, {"w": torch.zeros(1)}, opponent_win_rate=r)
+    return lg
+
+
+def test_pfsp_weights_favour_the_checkpoint_the_learner_loses_to():
+    # opponent_win_rate = how well the LEARNER does. 0.1 = learner is losing.
+    lg = _pfsp_league([0.1, 0.9])
+    w = lg._pfsp_weights("blue")
+    assert w[0] > w[1], "the hard opponent must be drawn more often"
+    assert w.sum() == pytest.approx(1.0)
+
+
+def test_pfsp_power_controls_sharpness():
+    rates = [0.2, 0.8]
+    soft = _pfsp_league(rates, power=1.0)._pfsp_weights("blue")
+    hard = _pfsp_league(rates, power=4.0)._pfsp_weights("blue")
+    assert hard[0] > soft[0], "higher power = greedier toward the hardest"
+    flat = _pfsp_league(rates, power=0.0)._pfsp_weights("blue")
+    assert flat == pytest.approx([0.5, 0.5]), "power 0 must reduce to uniform"
+
+
+def test_pfsp_missing_rates_fall_back_to_pool_mean_not_a_crash():
+    lg = League(p_latest=0.0, seed=0, pfsp=True)
+    lg.add("blue", 0, {"w": torch.zeros(1)}, opponent_win_rate=0.2)
+    lg.add("blue", 1, {"w": torch.zeros(1)})  # no rate recorded
+    w = lg._pfsp_weights("blue")
+    assert np.all(np.isfinite(w)) and w.sum() == pytest.approx(1.0)
+
+
+def test_pfsp_all_solved_degrades_to_uniform_not_divide_by_zero():
+    lg = _pfsp_league([1.0, 1.0, 1.0])
+    w = lg._pfsp_weights("blue")
+    assert w == pytest.approx([1 / 3, 1 / 3, 1 / 3])
+
+
+def test_pfsp_sample_probs_match_empirical_draws():
+    lg = _pfsp_league([0.1, 0.5, 0.9], p_latest=0.3, seed=7)
+    probs = lg.sample_probs("blue")
+    assert probs.sum() == pytest.approx(1.0)
+    counts = np.zeros(3)
+    for _ in range(8000):
+        counts[lg.sample("blue").generation] += 1
+    assert counts / counts.sum() == pytest.approx(probs, abs=0.02)
+
+
+def test_uniform_league_is_unchanged_by_the_pfsp_addition():
+    """Default stays the M7 behaviour — PFSP is opt-in."""
+    lg = League(p_latest=0.3, seed=1)
+    assert lg.pfsp is False
+    for i in range(4):
+        lg.add("blue", i, {"w": torch.zeros(1)}, opponent_win_rate=0.1 * i)
+    p = lg.sample_probs("blue")
+    expected = np.full(4, 0.7 / 4)
+    expected[-1] += 0.3
+    assert p == pytest.approx(expected)
+
+
+def test_pfsp_survives_state_dict_roundtrip():
+    lg = _pfsp_league([0.1, 0.9], p_latest=0.25, power=3.0)
+    lg2 = League()
+    lg2.load_state_dict(lg.state_dict())
+    assert lg2.pfsp is True and lg2.pfsp_power == 3.0
+    assert lg2.sample_probs("blue") == pytest.approx(lg.sample_probs("blue"))
+
+
+def test_league_rejects_negative_pfsp_power():
+    with pytest.raises(ValueError):
+        League(pfsp_power=-1.0)
