@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
 
-import pytest
 
 from arena.eval.report import (
     format_leaderboard_table,

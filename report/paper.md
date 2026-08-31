@@ -128,6 +128,42 @@ The gap is specifically **robustness to a fresh best response** — which is exa
 static-vs-adversarial-evaluation gap this project exists to measure, now pointing at our own
 method. This is a result, not a failure; it is just not the result previously claimed.
 
+### 4.5 Transfer to LLM-planned attacks (M10)
+
+Blue trains against `ScriptedAttacker`, which always plays the canonical minimal chain
+(source → propagator ×N → sink). The held-out sweep replaces that planner with
+`qwen2.5:3b`, which is given the episode's registry and objective and asked to plan the
+calls. A plan counts only if replaying it through the taint tracker actually completes the
+objective; otherwise the episode falls back to the scripted chain and the reason is
+recorded. On `small.yaml`, 34 of 60 adversarial episodes (57%) were LLM-planned, of which
+33 differed from the scripted chain.
+
+```
+                    scripted plans          LLM-planned plans
+defender            AUROC   TPR@5%FPR       AUROC   TPR@5%FPR
+------------------------------------------------------------
+causal_monitor      0.978       0.875       0.914       0.675
+single_shot         0.732       0.193       0.688       0.189
+static_allowlist    0.517       0.042       0.515       0.039
+```
+
+**The causal monitor loses 20 points of TPR@5%FPR** (0.875 → 0.675) when the attack is
+planned by a model rather than by our script. Its hand-engineered causal features are
+partly tuned to the *shape* of the canonical chain, and a planner that pads with
+ordinary-looking calls or reorders the laundering steps degrades them. `single_shot` and
+`static_allowlist` barely move — they never used sequence structure, so there is less to
+lose.
+
+This is the sharpest evidence in the report for ARENA's premise: a defender can look
+strong against a fixed attack generator and measurably weaken against an adaptive one,
+without any change to the environment or the ground truth.
+
+Two caveats stated plainly. `exploitability` is not a transfer signal in this table — its
+best-response Red is PPO, not the LLM, so it re-derives its own attacker in both arms and
+moves only through re-calibration. And 43% of episodes fell back to the scripted chain
+(chiefly `plan_does_not_complete_objective`), so the LLM arm is a mixture, which makes the
+measured degradation a *lower bound* on the true gap.
+
 ## 5. Methods Integrity: The Audit
 
 After M9, a full module and data-flow audit found **4 bugs**, all in the measurement path:
@@ -151,8 +187,9 @@ bugs lived. Mutation-checked: reintroducing bug 1 fails immediately.
    compute we don't have.
 2. **Single seed**: the current leaderboard is one seed. Multi-seed results (≥3 seeds,
    mean ± spread) are needed before claiming anything moved.
-3. **Simulated payloads**: training uses templated attacks. The M10 LLM sweep tests transfer,
-   but the LLM-generated payloads are still evaluated in the same simulated environment.
+3. **Simulated environment**: training uses scripted attack chains. The M10 sweep tests
+   transfer to LLM-*planned* attacks (§4.5), but both arms still run inside the same
+   simulated tool environment; no real MCP server is exercised.
 4. **Blue reward sparsity**: Blue gets one sparse episode-level signal. Denser per-step
    reward shaping could help but is untested.
 5. **No PFSP**: the league uses uniform sampling with a latest-bias. Prioritised sampling
@@ -175,12 +212,12 @@ bugs lived. Mutation-checked: reintroducing bug 1 fails immediately.
 Every number in this paper is regenerable from a single command:
 
 ```bash
-python3 scripts/reproduce.py small.yaml --blue runs/sp.pt --out report/
+python3 scripts/reproduce.py small.yaml --blue runs/sp.pt --out report/ --sweep
 ```
 
 This produces `report/leaderboard.md`, `report/leaderboard.png`,
-`report/exploitability_curve.md`, `report/exploitability_curve.png`, and
-`report/results.json`.
+`report/exploitability_curve.md`, `report/exploitability_curve.png`,
+`report/transfer_sweep.md` (with `--sweep`, needs Ollama), and `report/results.json`.
 
 ## 9. Patent Claim Structure
 

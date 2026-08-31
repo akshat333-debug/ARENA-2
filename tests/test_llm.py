@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -11,12 +10,11 @@ import pytest
 from arena.config import ArenaConfig, LLMConfig
 from arena.llm.client import LLMClient, _cache_path, _hash_key, available
 from arena.llm.payloads import (
-    RenderedPayload,
     render_payload,
     validate_payload,
     _FALLBACK_PAYLOADS,
 )
-from arena.scenarios import AttackFamily, ObjectiveKind
+from arena.scenarios import AttackFamily
 
 
 # ---------------------------------------------------------------------------
@@ -296,25 +294,65 @@ class TestSweepResult:
     def test_format_llm_unavailable(self):
         from arena.llm.sweep import SweepResult
 
-        sr = SweepResult(
-            label="test",
-            llm_available=False,
-            templated_rows=[],
-        )
+        sr = SweepResult(label="test", llm_available=False, templated_rows=[])
         out = sr.format()
         assert "LLM available: False" in out
-        assert "templates (LLM unavailable)" in out
+        assert "scripted (LLM unavailable)" in out
 
-    def test_format_llm_available(self):
-        from arena.llm.sweep import SweepResult
+    def test_format_shows_both_arms_when_llm_planned_something(self):
+        from arena.eval.harness import LeaderboardRow
+        from arena.llm.sweep import PlanStats, SweepResult
 
+        row = LeaderboardRow(
+            name="d", auroc=0.9, tpr_at_5pct_fpr=0.5, exploitability=0.4,
+            fresh_red_start=0.1, operating_fpr=0.05, n_decisions=10,
+        )
         sr = SweepResult(
-            label="test",
-            llm_available=True,
-            templated_rows=[],
-            llm_rows=[],
+            label="test", llm_available=True,
+            templated_rows=[row], llm_rows=[row],
+            plan_stats=PlanStats(n_adversarial=10, n_llm_planned=7,
+                                 n_differing_from_scripted=6, reasons={}),
         )
         out = sr.format()
         assert "LLM available: True" in out
-        assert "templates" in out.lower()
-        assert "LLM" in out
+        assert "Scripted attack plans" in out
+        assert "LLM-planned attacks" in out
+        assert "7/10" in out
+        assert "Transfer =" in out
+
+    def test_format_warns_when_no_plan_differed(self):
+        """A sweep whose LLM arm never diverged is the same measurement twice.
+        Saying so is the difference between a result and a formality — this is
+        exactly the state M10 shipped in before the audit."""
+        from arena.eval.harness import LeaderboardRow
+        from arena.llm.sweep import PlanStats, SweepResult
+
+        row = LeaderboardRow(
+            name="d", auroc=0.9, tpr_at_5pct_fpr=0.5, exploitability=0.4,
+            fresh_red_start=0.1, operating_fpr=0.05, n_decisions=10,
+        )
+        sr = SweepResult(
+            label="test", llm_available=True,
+            templated_rows=[row], llm_rows=[row],
+            plan_stats=PlanStats(n_adversarial=10, n_llm_planned=0,
+                                 n_differing_from_scripted=0, reasons={"x": 10}),
+        )
+        out = sr.format()
+        assert "WARNING" in out
+        assert "no result" in out
+
+
+class TestPlanStats:
+    def test_llm_rate_and_summary(self):
+        from arena.llm.sweep import PlanStats
+
+        st = PlanStats(n_adversarial=8, n_llm_planned=6,
+                       n_differing_from_scripted=5, reasons={"no_response": 2})
+        assert st.llm_rate == 0.75
+        s = st.summary()
+        assert "6/8" in s and "75%" in s and "no_response=2" in s
+
+    def test_empty_is_zero_not_a_crash(self):
+        from arena.llm.sweep import PlanStats
+
+        assert PlanStats().llm_rate == 0.0

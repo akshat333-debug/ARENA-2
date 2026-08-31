@@ -51,6 +51,9 @@ class LLMClient:
         self.cfg = cfg or LLMConfig()
         self._client = None
         self._available: bool | None = None  # lazy
+        #: Why the last :meth:`generate` returned ``None``. ``None`` if the last
+        #: call succeeded or none has been made.
+        self.last_error: str | None = None
 
     def _ensure_client(self):
         if self._client is None:
@@ -92,18 +95,29 @@ class LLMClient:
         if client is False or client is None:
             return None
 
-        try:
-            opts = {"temperature": self.cfg.temperature}
-            if options:
-                opts.update(options)
-            resp = client.generate(
-                model=self.cfg.model,
-                prompt=prompt,
-                options=opts,
-            )
-            text = resp.get("response", "")
-            if text:
-                cp.write_text(json.dumps({"prompt": prompt, "response": text}))
-            return text or None
-        except Exception:
-            return None
+        opts = {"temperature": self.cfg.temperature}
+        if options:
+            opts.update(options)
+
+        last_err: Exception | None = None
+        for attempt in range(self.cfg.max_retries + 1):
+            try:
+                resp = client.generate(
+                    model=self.cfg.model,
+                    prompt=prompt,
+                    options=opts,
+                    keep_alive=self.cfg.timeout,
+                )
+                text = (resp.get("response") or "").strip()
+                if text:
+                    cp.write_text(json.dumps({"prompt": prompt, "response": text}))
+                    return text
+                last_err = None  # empty reply: retry, but nothing to report
+            except Exception as e:  # noqa: BLE001 - degrading to templates is the contract
+                last_err = e
+                if attempt == self.cfg.max_retries:
+                    break
+        # Record why the LLM path degraded — a silent None here is how a whole
+        # sweep quietly turns back into templates without anyone noticing.
+        self.last_error = repr(last_err) if last_err is not None else "empty_response"
+        return None

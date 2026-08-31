@@ -43,7 +43,7 @@ All M10 and M11 modules were implemented on top of the existing M1–M9 codebase
 
 | Addition | Files | Tests |
 |----------|-------|-------|
-| **M10: LLM payload sweep** | `arena/llm/__init__.py`, `client.py`, `payloads.py`, `sweep.py` | 30 fast (mocked) |
+| **M10: LLM-planned attacks** | `arena/llm/client.py`, `attacker.py`, `payloads.py`, `sweep.py` | 33 fast + 24 planner + slow |
 | **M10: Sweep script** | `scripts/run_sweep.py` | — |
 | **M10: Config** | `arena/config.py` (`LLMConfig` section) | — |
 | **M11: Report helpers** | `arena/eval/report.py` (tables, plots, JSON) | 8 fast |
@@ -52,7 +52,11 @@ All M10 and M11 modules were implemented on top of the existing M1–M9 codebase
 | **M10: Docs** | `docs/m10-llm.md` | — |
 | **Dependencies** | `requirements.txt` (`ollama>=0.4`, `matplotlib>=3.8`) | — |
 
-**Note on Ollama (M10):** The Ollama client code is fully implemented and tested with mocks, but the actual LLM integration was NOT tested with a running Ollama daemon because `qwen2.5:3b` was not pulled on this machine. The code degrades gracefully to templates when Ollama is unavailable. To use the full LLM sweep: `ollama pull qwen2.5:3b`.
+**M10 note.** The sweep is verified end-to-end against a live `qwen2.5:3b`. Its held-out
+variable is the **attack plan**, not payload prose: Blue observes tool-call metadata only,
+so an LLM payload appended to the task text is invisible to every defender and measures
+nothing. See [docs/m10-llm.md](docs/m10-llm.md). Without Ollama the sweep runs the scripted
+arm alone and says so; `ollama pull qwen2.5:3b` enables the held-out arm.
 
 ## Install
 

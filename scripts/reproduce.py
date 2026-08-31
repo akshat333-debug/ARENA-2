@@ -8,8 +8,8 @@ Regenerates:
   1. Baseline leaderboard table
   2. ARENA-trained Blue row (if --blue provided)
   3. Exploitability curve (if --blue has a league)
-  4. Transfer sweep table (M10, if Ollama available)
-  5. Plot files (PNG) in the output directory
+  4. Plot files (PNG) in the output directory
+  5. Transfer sweep table (M10, with --sweep)
   6. results.json with all raw numbers
 
 Every number in the report MUST come from this script.
@@ -61,6 +61,8 @@ def main() -> None:
     ap.add_argument("--br-steps", type=int, default=None)
     ap.add_argument("--n-eval", type=int, default=None)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--sweep", action="store_true",
+                    help="also run the M10 LLM transfer sweep (needs Ollama; slow)")
     args = ap.parse_args()
 
     t0 = time.time()
@@ -68,7 +70,7 @@ def main() -> None:
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"=== ARENA M11 Reproduce ===")
+    print("=== ARENA M11 Reproduce ===")
     print(f"config: {cfg.name}  seed: {args.seed}")
     print(f"output: {out_dir}/")
     print()
@@ -76,7 +78,7 @@ def main() -> None:
     results = {"config": cfg.name, "seed": args.seed, "sections": {}}
 
     # --- 1. Baseline leaderboard ---
-    print("[1/4] Collecting decisions for baselines...")
+    print("[1/5] Collecting decisions for baselines...")
     tr, _ = split(collect_decisions(200, 200, config=cfg, seed=args.seed + 1), seed=args.seed)
     defenders = {
         "static_allowlist": StaticAllowList(),
@@ -85,17 +87,15 @@ def main() -> None:
     }
 
     # --- 2. ARENA-trained Blue ---
-    blue_label = None
     if args.blue:
-        print("[2/4] Loading ARENA-trained Blue...")
+        print("[2/5] Loading ARENA-trained Blue...")
         net, sd = _load_blue(args.blue, cfg)
         defenders["arena_blue"] = net
-        blue_label = "arena_blue"
     else:
-        print("[2/4] No --blue provided, skipping ARENA Blue.")
+        print("[2/5] No --blue provided, skipping ARENA Blue.")
 
     # --- 3. Evaluate ---
-    print("[3/4] Running evaluation (this may take a few minutes)...")
+    print("[3/5] Running evaluation (this may take a few minutes)...")
     rows = evaluate_defenders(
         defenders, cfg,
         n_decision_adv=args.decisions, n_decision_benign=args.decisions,
@@ -118,7 +118,7 @@ def main() -> None:
 
     # --- 4. Exploitability curve ---
     if args.blue and "blue" in sd and "league" in sd:
-        print("[4/4] Building exploitability curve from league...")
+        print("[4/5] Building exploitability curve from league...")
         from arena.selfplay import SelfPlayTrainer
 
         sp = SelfPlayTrainer(cfg, seed=args.seed)
@@ -147,7 +147,35 @@ def main() -> None:
         else:
             print("  (checkpoint has no league; skipping curve)")
     else:
-        print("[4/4] No league checkpoint; skipping exploitability curve.")
+        print("[4/5] No league checkpoint; skipping exploitability curve.")
+
+    # --- 5. M10 transfer sweep ---
+    if args.sweep:
+        print("[5/5] Running the M10 transfer sweep (LLM-planned attacks)...")
+        sweep = run_sweep(
+            defenders, cfg,
+            n_decision_adv=args.decisions, n_decision_benign=args.decisions,
+            br_steps=args.br_steps, n_eval=args.n_eval, seed=args.seed,
+        )
+        print(sweep.format())
+        results["sections"]["transfer_sweep"] = {
+            "llm_available": sweep.llm_available,
+            "plan_stats": (
+                {
+                    "n_adversarial": sweep.plan_stats.n_adversarial,
+                    "n_llm_planned": sweep.plan_stats.n_llm_planned,
+                    "n_differing_from_scripted": sweep.plan_stats.n_differing_from_scripted,
+                    "reasons": sweep.plan_stats.reasons,
+                }
+                if sweep.plan_stats else None
+            ),
+            "scripted_rows": [r.as_dict() for r in sweep.templated_rows],
+            "llm_rows": [r.as_dict() for r in sweep.llm_rows] if sweep.llm_rows else None,
+        }
+        (out_dir / "transfer_sweep.md").write_text(sweep.format())
+        print(f"  -> {out_dir}/transfer_sweep.md")
+    else:
+        print("[5/5] Transfer sweep skipped (pass --sweep to run it).")
 
     # --- Save raw results ---
     elapsed = time.time() - t0
