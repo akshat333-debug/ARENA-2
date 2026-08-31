@@ -229,7 +229,6 @@ def test_causal_features_do_not_open_a_leakage_channel(episodes):
 
     compared = 0
     for base in adv[:10]:
-        obj = base.objective
         twin = base.model_copy(update={"objective": None, "episode_type": EpisodeType.BENIGN})
         e1, e2 = ARENAEnv(CFG, scenario=base), ARENAEnv(CFG, scenario=twin)
         e1.reset(seed=0)
