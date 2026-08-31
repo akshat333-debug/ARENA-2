@@ -6,6 +6,13 @@ from arena.eval.exploitability import (
     exploitability,
     exploitability_curve,
 )
+from arena.eval.multiseed import (
+    AggregateRow,
+    PairedDelta,
+    format_aggregate,
+    multiseed_leaderboard,
+    paired_delta,
+)
 from arena.eval.harness import (
     LeaderboardRow,
     evaluate_defenders,
@@ -18,4 +25,9 @@ __all__ = [
     "roc_auc", "roc_curve", "tpr_at_fpr",
     "exploitability", "exploitability_curve", "curve_from_league", "ExploitabilityResult",
     "evaluate_defenders", "format_leaderboard", "policy_score_fn", "LeaderboardRow",
+    "AggregateRow",
+    "PairedDelta",
+    "multiseed_leaderboard",
+    "paired_delta",
+    "format_aggregate",
 ]
