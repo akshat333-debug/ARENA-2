@@ -10,7 +10,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-import numpy as np
 
 from arena.baselines.collect import Decision
 from arena.config import ArenaConfig
@@ -84,19 +83,6 @@ def false_quarantine_rate(blue: BluePolicy, n: int, *, config: ArenaConfig, seed
     return quarantined / max(1, done)
 
 
-def calibrate_threshold(baseline, benign_decisions: list[Decision], target_fpr: float = 0.05) -> float:
-    """Set the baseline's decision threshold to the ``1 - target_fpr`` quantile of
-    its scores on benign traffic, so every detector is compared at the same
-    false-positive budget (the M8 methodology, in miniature)."""
-    s = np.array([baseline.score(d.blue_obs) for d in benign_decisions if not d.adversarial])
-    if len(s) == 0:
-        return 0.5
-    thr = float(np.quantile(s, 1.0 - target_fpr))
-    # nudge above ties so exactly-at-quantile benign scores don't fire
-    baseline.threshold = np.nextafter(thr, np.inf)
-    return baseline.threshold
-
-
 # These two used to carry their own rank-AUROC and quantile-threshold
 # implementations, written before M8 existed. They agreed with
 # `arena.eval.metrics` exactly (checked over 910 decisions in the M1-M9 audit),
@@ -133,6 +119,15 @@ def score_baseline(
     decisions: list[Decision] | None = None,
     seed: int = 0,
 ) -> BaselineScore:
+    """M4's light scoring path.
+
+    ``auroc`` / ``tpr_at_5pct_fpr`` are threshold-free (the latter calibrates
+    internally). ``attack_success_rate`` and ``false_quarantine_rate`` are
+    measured at whatever threshold the baseline was fitted with, so they are NOT
+    comparable across defenders at a matched false-positive budget — that is
+    what ``arena.eval.harness.evaluate_defenders`` exists for, and it is the
+    authoritative path for any reported number (M8, project.md S7).
+    """
     return BaselineScore(
         name=getattr(baseline, "name", type(baseline).__name__),
         attack_success_rate=attack_success_rate(baseline, n_adversarial, config=config, seed=seed),

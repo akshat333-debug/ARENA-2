@@ -64,7 +64,7 @@ Light — the full leaderboard is M8. Provides:
   defender (the exploitability proxy).
 - `false_quarantine_rate` — benign *sessions* quarantined (episode-level).
 - `decision_auroc` — per-decision, no sklearn dependency.
-- `tpr_at_fpr` / `calibrate_threshold` — per-decision TPR at a fixed per-decision
+- `tpr_at_fpr` — per-decision TPR at a fixed per-decision
   FPR; the M8 headline metric, in miniature.
 
 `python3 scripts/run_baselines.py small.yaml` prints the table. Representative run

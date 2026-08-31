@@ -210,3 +210,42 @@ def test_every_episode_end_sets_exactly_one_of_terminated_truncated(learner):
             ends += 1
             env.reset()
     assert ends > 20, "too few episode ends to be a meaningful check"
+
+
+def test_causal_features_do_not_open_a_leakage_channel(episodes):
+    """`blue_causal_features` (M11) hands Blue the same hand-engineered summary
+    the causal_monitor baseline uses. It is derived from Blue's own observable
+    call rows, so it must inherit the invariance — assert that rather than
+    assume it, since this is the one place a new Blue input was added since M3.
+    """
+    import torch
+
+    from arena.features import sequence_features_torch
+    from arena.policies import to_batch
+
+    gen = ScenarioGenerator.from_config(CFG.scenario, seed=11)
+    adv = [s for s in (gen.sample() for _ in range(400)) if s.is_adversarial]
+    assert adv, "no adversarial scenarios generated"
+
+    compared = 0
+    for base in adv[:10]:
+        obj = base.objective
+        twin = base.model_copy(update={"objective": None, "episode_type": EpisodeType.BENIGN})
+        e1, e2 = ARENAEnv(CFG, scenario=base), ARENAEnv(CFG, scenario=twin)
+        e1.reset(seed=0)
+        e2.reset(seed=0)
+        for _ in range(4):
+            for e in (e1, e2):
+                if not (e.terminations[RED] or e.truncations[RED]):
+                    e.step(0)
+            if e1.terminations[BLUE] or e1.truncations[BLUE]:
+                break
+            o1, o2 = e1.observe(BLUE), e2.observe(BLUE)
+            f1 = sequence_features_torch(*[to_batch(o1)[k] for k in ("calls", "length")])
+            f2 = sequence_features_torch(*[to_batch(o2)[k] for k in ("calls", "length")])
+            torch.testing.assert_close(f1, f2)
+            compared += 1
+            for e in (e1, e2):
+                if not (e.terminations[BLUE] or e.truncations[BLUE]):
+                    e.step(ALLOW)
+    assert compared > 0, "no observations compared — test would be vacuous"
