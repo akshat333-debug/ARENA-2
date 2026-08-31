@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from arena.features import (
     ALLOW,
     CALL_FEATS,
     FLAG,
     RED_EXTRA,
+    SEQUENCE_FEATS,
     SINGLE_CALL_FEATS,
     SIDE_EFFECTS,
     encode_call,
@@ -17,6 +19,7 @@ from arena.features import (
     sequence_features_from_rows,
     single_call_features,
 )
+from arena.scenarios import ScenarioGenerator
 from arena.tools import COMMON_TOOLS
 
 BY = {t.name: t for t in COMMON_TOOLS}
@@ -132,3 +135,79 @@ def _seq_names():
     from arena.features import SEQUENCE_FEATURE_NAMES
 
     return list(SEQUENCE_FEATURE_NAMES)
+
+
+# ---------------------------------------------------------------------------
+# torch mirror parity (M11) — two implementations of one definition
+# ---------------------------------------------------------------------------
+
+
+def test_torch_sequence_features_match_numpy():
+    """`sequence_features_torch` must equal `sequence_features_from_rows` on
+    every row. Two implementations of the same definition drift silently; this
+    is the only thing stopping that."""
+    import torch
+
+    from arena.features import sequence_features_torch
+
+    rng = np.random.default_rng(0)
+    gen = ScenarioGenerator(seed=3)
+    batch, lengths = [], []
+    for _ in range(24):
+        sc = gen.sample()
+        n = int(rng.integers(0, sc.max_steps + 1))
+        tools = [sc.registry[int(rng.integers(len(sc.registry)))] for _ in range(n)]
+        hist = [(t, i, int(rng.integers(2))) for i, t in enumerate(tools)]
+        mat, length = history_matrix(hist, None, sc.max_steps, for_red=False)
+        batch.append(mat)
+        lengths.append(length)
+
+    want = np.stack([
+        sequence_features_from_rows(m[:ln]) if ln else np.zeros(SEQUENCE_FEATS, dtype=np.float32)
+        for m, ln in zip(batch, lengths)
+    ])
+    got = sequence_features_torch(
+        torch.as_tensor(np.stack(batch)), torch.as_tensor(np.array(lengths))
+    ).numpy()
+
+    assert got.shape == want.shape
+    np.testing.assert_allclose(got, want, atol=1e-5)
+
+
+def test_torch_sequence_features_empty_history_is_all_zero():
+    import torch
+
+    from arena.features import sequence_features_torch
+
+    calls = torch.zeros((2, 6, CALL_FEATS))
+    out = sequence_features_torch(calls, torch.tensor([0, 0]))
+    assert torch.count_nonzero(out) == 0
+
+
+def test_torch_sequence_features_ignores_padded_rows():
+    """A padded row must not leak into the summary — the whole point of `length`."""
+    import torch
+
+    from arena.features import sequence_features_torch
+
+    gen = ScenarioGenerator(seed=5)
+    sc = gen.sample()
+    sink = next(t for t in sc.registry if t.is_sink)
+    hist = [(sc.registry[0], 0, ALLOW)]
+    short, ln = history_matrix(hist, None, sc.max_steps, for_red=False)
+    # same prefix, but a sink parked in a row beyond `length`
+    padded = short.copy()
+    padded[ln] = encode_call(sink, ln, sc.max_steps, resolved=True, verdict=ALLOW, for_red=False)
+
+    a = sequence_features_torch(torch.as_tensor(short[None]), torch.tensor([ln]))
+    b = sequence_features_torch(torch.as_tensor(padded[None]), torch.tensor([ln]))
+    torch.testing.assert_close(a, b)
+
+
+def test_torch_sequence_features_rejects_bad_shape():
+    import torch
+
+    from arena.features import sequence_features_torch
+
+    with pytest.raises(ValueError):
+        sequence_features_torch(torch.zeros((4, CALL_FEATS)), torch.tensor([1]))

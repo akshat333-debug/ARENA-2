@@ -8,7 +8,7 @@ import torch
 
 from arena.config import PolicyConfig, load_config
 from arena.env import BLUE, RED, ARENAEnv, SingleAgentARENA
-from arena.features import VERDICTS
+from arena.features import ALLOW, VERDICTS
 from arena.policies import (
     TorchPolicyAdapter,
     make_policy,
@@ -213,3 +213,76 @@ def test_zero_length_observation_is_handled():
     pol = make_policy("blue", max_steps=sc.max_steps, n_tools_max=len(sc.registry))
     logits, value = pol(to_batch(obs))
     assert torch.isfinite(logits).all() and torch.isfinite(value).all()
+
+
+# ---------------------------------------------------------------------------
+# blue_causal_features (M11 future-work #5)
+# ---------------------------------------------------------------------------
+
+
+def _blue_obs(seed=0, steps=3):
+    from arena.config import load_config
+    from arena.env import BLUE, ARENAEnv
+
+    cfg = load_config("small.yaml")
+    env = ARENAEnv(cfg)
+    env.reset(seed=seed)
+    for _ in range(steps):
+        env.step(0)          # red proposes
+        env.step(ALLOW)      # blue allows
+    env.step(0)
+    return cfg, env.observe(BLUE)
+
+
+def test_causal_features_widen_the_trunk_by_exactly_sequence_feats():
+    from arena.features import SEQUENCE_FEATS
+
+    cfg, _ = _blue_obs()
+    off = make_policy("blue", max_steps=cfg.scenario.max_steps,
+                      n_tools_max=cfg.scenario.n_tools_max,
+                      cfg=PolicyConfig(blue_causal_features=False), seed=0)
+    on = make_policy("blue", max_steps=cfg.scenario.max_steps,
+                     n_tools_max=cfg.scenario.n_tools_max,
+                     cfg=PolicyConfig(blue_causal_features=True), seed=0)
+    assert on.net.trunk[0].in_features - off.net.trunk[0].in_features == SEQUENCE_FEATS
+
+
+def test_causal_blue_produces_valid_output_and_gradients():
+    cfg, obs = _blue_obs()
+    pol = make_policy("blue", max_steps=cfg.scenario.max_steps,
+                      n_tools_max=cfg.scenario.n_tools_max,
+                      cfg=PolicyConfig(blue_causal_features=True), seed=0)
+    logits, value = pol(to_batch(obs))
+    assert logits.shape == (1, len(VERDICTS)) and value.shape == (1,)
+    assert torch.isfinite(logits).all() and torch.isfinite(value).all()
+    (logits.sum() + value.sum()).backward()
+    assert any(p.grad is not None and torch.isfinite(p.grad).all() for p in pol.parameters())
+
+
+def test_causal_blue_is_off_by_default():
+    assert PolicyConfig().blue_causal_features is False
+    cfg, obs = _blue_obs()
+    pol = make_policy("blue", max_steps=cfg.scenario.max_steps,
+                      n_tools_max=cfg.scenario.n_tools_max, seed=0)
+    assert pol.net.causal is False
+
+
+def test_causal_features_actually_reach_the_trunk():
+    """Guard against the flag widening the layer while feeding it zeros — the
+    silent no-op version of this feature."""
+    from arena.features import sequence_features_torch
+
+    cfg, obs = _blue_obs(steps=4)
+    batch = to_batch(obs)
+    feats = sequence_features_torch(batch["calls"], batch["length"])
+    assert torch.count_nonzero(feats) > 0, "fixture produced an empty summary"
+
+    pol = make_policy("blue", max_steps=cfg.scenario.max_steps,
+                      n_tools_max=cfg.scenario.n_tools_max,
+                      cfg=PolicyConfig(blue_causal_features=True), seed=0)
+    base, _ = pol(batch)
+    # zero only the causal slice of the trunk's weights; output must move
+    with torch.no_grad():
+        pol.net.trunk[0].weight[:, -feats.shape[1]:] = 0.0
+    muted, _ = pol(batch)
+    assert not torch.allclose(base, muted), "causal features had no effect on the output"

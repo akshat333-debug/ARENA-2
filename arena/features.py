@@ -256,3 +256,80 @@ def sequence_features_from_rows(rows: np.ndarray) -> np.ndarray:
     """Same summary, computed from encoded call rows — what a defender has at
     inference time from its observation alone."""
     return _sequence_features_core(_views_from_rows(rows))
+
+
+# --- torch mirror of sequence_features, for BluePolicy (M11) ----------
+#
+# `sequence_features_from_rows` is numpy and per-sample; feeding it to a policy
+# would mean a python loop over the minibatch every forward pass. This is the
+# same computation batched in torch, over the *same* observable columns.
+#
+# Two implementations of one definition is exactly the kind of thing that drifts
+# silently, so `test_features.py::test_torch_sequence_features_match_numpy`
+# pins them together on random observations. Change one, change both.
+
+
+def sequence_features_torch(calls, length):
+    """Batched causal summary of a call history.
+
+    ``calls`` is ``(B, T, CALL_FEATS)`` as produced by :func:`history_matrix`
+    (padded rows are all-zero); ``length`` is ``(B,)`` or ``(B, 1)``. Returns
+    ``(B, SEQUENCE_FEATS)`` matching :func:`sequence_features_from_rows`
+    row-for-row.
+    """
+    import torch
+
+    if calls.dim() != 3:
+        raise ValueError(f"calls must be (B, T, F), got {tuple(calls.shape)}")
+    b, t, _ = calls.shape
+    dev = calls.device
+    n = length.reshape(b).to(dev).long()
+    idx = torch.arange(t, device=dev).unsqueeze(0).expand(b, t)
+    mask = idx < n.unsqueeze(1)
+    denom = n.clamp(min=1).to(calls.dtype)
+
+    o = len(SIDE_EFFECTS) + len(CATEGORIES)  # first scalar column
+    # Mask explicitly rather than trusting padded rows to be zero: the numpy
+    # version slices `rows[:length]`, so anything stale past `length` would make
+    # the two disagree, and a reused observation buffer is exactly how that
+    # happens. Caught by test_torch_sequence_features_ignores_padded_rows.
+    counts = (calls[:, :, : len(SIDE_EFFECTS)] * mask.unsqueeze(-1)).sum(1)   # (B, 6)
+    is_sensitive = (calls[:, :, SE_SENSITIVE] > 0.5) & mask
+    is_sink = (calls[:, :, SE_SINK] > 0.5) & mask
+    propagates = (
+        (calls[:, :, _SE_IX["transform"]] + calls[:, :, _SE_IX["exec"]]) > 0.5
+    ) & mask
+    untrusted = (calls[:, :, o + 1] > 0.5) & mask
+    privileged = (calls[:, :, o + 2] > 0.5) & mask
+    max_sens = torch.where(mask, calls[:, :, o] * 2.0, torch.zeros_like(calls[:, :, o])).amax(1)
+
+    big = t + 1
+    first_sensitive = torch.where(is_sensitive, idx, torch.full_like(idx, big)).amin(1)
+    first_untrusted = torch.where(untrusted, idx, torch.full_like(idx, big)).amin(1)
+    last_sink = torch.where(is_sink, idx, torch.full_like(idx, -1)).amax(1)
+    last_privileged = torch.where(privileged, idx, torch.full_like(idx, -1)).amax(1)
+
+    has_sensitive = first_sensitive < big
+    has_untrusted = first_untrusted < big
+    has_sink = last_sink >= 0
+
+    after = propagates & (idx > first_sensitive.unsqueeze(1)) & has_sensitive.unsqueeze(1)
+    launder = after.sum(1).to(calls.dtype)
+
+    f = calls.new_zeros((b, SEQUENCE_FEATS))
+    f[:, : len(SIDE_EFFECTS)] = counts / denom.unsqueeze(1)
+    f[:, o - len(CATEGORIES)] = (n.to(calls.dtype) / _SEQ_NORM).clamp(max=1.0)
+    f[:, o - len(CATEGORIES) + 1] = (counts[:, SE_SENSITIVE] + counts[:, SE_SINK]) / denom
+    f[:, o - len(CATEGORIES) + 2] = has_sensitive.to(calls.dtype)
+    f[:, o - len(CATEGORIES) + 3] = has_untrusted.to(calls.dtype)
+    f[:, o - len(CATEGORIES) + 4] = has_sink.to(calls.dtype)
+    f[:, o - len(CATEGORIES) + 5] = (
+        has_sensitive & has_sink & (last_sink > first_sensitive)
+    ).to(calls.dtype)
+    f[:, o - len(CATEGORIES) + 6] = (
+        has_untrusted & (last_privileged >= 0) & (last_privileged > first_untrusted)
+    ).to(calls.dtype)
+    f[:, o - len(CATEGORIES) + 7] = (launder / 6.0).clamp(max=1.0)
+    f[:, o - len(CATEGORIES) + 8] = max_sens / 2.0
+    # rows with no calls at all must be all-zero, as the numpy version returns
+    return f * (n > 0).to(calls.dtype).unsqueeze(1)

@@ -25,7 +25,14 @@ import torch.nn as nn
 from torch.distributions import Categorical
 
 from arena.config import PolicyConfig
-from arena.features import CALL_FEATS, DOMAINS, RED_EXTRA, VERDICTS
+from arena.features import (
+    CALL_FEATS,
+    DOMAINS,
+    RED_EXTRA,
+    SEQUENCE_FEATS,
+    VERDICTS,
+    sequence_features_torch,
+)
 
 RED_HIST_FEATS = CALL_FEATS + RED_EXTRA
 
@@ -74,8 +81,10 @@ class BluePolicy(nn.Module):
         self.cfg = cfg
         self.call_enc = nn.Sequential(_init(nn.Linear(CALL_FEATS, cfg.hidden)), nn.Tanh())
         self.gru = nn.GRU(cfg.hidden, cfg.gru_hidden, batch_first=True)
+        self.causal = cfg.blue_causal_features
+        extra = SEQUENCE_FEATS if self.causal else 0
         self.trunk = nn.Sequential(
-            _init(nn.Linear(cfg.gru_hidden + len(DOMAINS), cfg.hidden)), nn.Tanh()
+            _init(nn.Linear(cfg.gru_hidden + len(DOMAINS) + extra, cfg.hidden)), nn.Tanh()
         )
         self.actor = _init(nn.Linear(cfg.hidden, len(VERDICTS)), std=0.01)
         self.critic = _init(nn.Linear(cfg.hidden, 1), std=1.0)
@@ -96,7 +105,10 @@ class BluePolicy(nn.Module):
         h = self.call_enc(obs["calls"])
         seq, _ = self.gru(h)
         summary = _last_valid(seq, obs["length"])
-        z = self.trunk(torch.cat([summary, obs["domain"]], dim=-1))
+        parts = [summary, obs["domain"]]
+        if self.causal:
+            parts.append(sequence_features_torch(obs["calls"], obs["length"]))
+        z = self.trunk(torch.cat(parts, dim=-1))
         return self.actor(z), self.critic(z).squeeze(-1)
 
 
