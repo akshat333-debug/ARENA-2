@@ -14,17 +14,20 @@ best-response attack success against a frozen defender — as the primary metric
 
 We implement a self-play RL arena where a Red (attacker) and Blue (defender) co-evolve inside a
 simulated MCP tool-calling environment. Over 5 seeds at `small.yaml` scale (the default,
-laptop-feasible configuration), the co-evolved defender and the strongest hand-engineered
-baseline are **statistically indistinguishable** on exploitability (0.565 +/- 0.274 vs
-0.636 +/- 0.081); the sign of the difference flips across seeds. What *is* seed-stable is
-that both beat the static allow-list, whose 0.783 reproduces TAMAS's reported ~80% failure.
+laptop-feasible configuration), the plain co-evolved defender and the strongest hand-engineered baseline
+are **statistically indistinguishable** on exploitability (0.565 +/- 0.274 vs
+0.636 +/- 0.081) — the sign of the difference flips across seeds. Given the *same*
+hand-engineered causal features as that baseline, however, the co-evolved defender becomes
+**less exploitable on every one of 5 seeds** (0.313 +/- 0.199 vs 0.636). The static
+allow-list's 0.783 independently reproduces TAMAS's reported ~80% failure.
 
-The substantive finding is about **variance, not means**: the co-evolved defender's
-exploitability spread is an order of magnitude wider than any static baseline's. Same loop,
-same config, same budget, different seed — anywhere from clearly better to clearly worse.
-The open problem is therefore not that co-evolution produces a *worse* defender but that it
-produces an *unreliable* one, and the contribution is the benchmarking framework that makes
-that measurable at all.
+Two contributions follow. First, the gap was **representational, not a failure of
+co-evolution**: the sequence encoder could not recover the decisive causal feature from raw
+call metadata at this scale, and supplying it closes the gap. Second, and more durable, the
+co-evolved defender carries an order-of-magnitude wider **seed variance** than any static
+baseline — same loop, same config, different seed, materially different defender. That
+reliability problem is invisible to single-seed evaluation, and surfacing it is what the
+benchmark is for.
 
 ## 1. Introduction
 
@@ -155,11 +158,36 @@ noise, and we decline to bank it.
 What survives 5/5 seeds: the causal monitor beats the static allow-list (mean -0.147,
 spread 0.085, every seed agreeing).
 
-**The real finding is variance.** `arena_blue`'s exploitability spread is +/-0.274 against
-+/-0.081 and +/-0.024 for the baselines, and +/-0.213 vs +/-0.009 on TPR@5%FPR. The open
-problem is not that co-evolution yields a worse defender; it is that it yields an
-*unreliable* one. That is a sharper and more actionable statement than the gap it replaces,
-and it re-points the future work in §7 at reducing spread rather than chasing a mean.
+**The finding at this point is variance.** `arena_blue`'s exploitability spread is
++/-0.274 against +/-0.081 and +/-0.024 for the baselines. The open problem was therefore not
+that co-evolution yields a worse defender but that it yields an *unreliable* one.
+
+### 4.4b The gap closes — and the cause was representational
+
+Four levers were run as arms of the same experiment (5 seeds each, config-only,
+`docs/m11-gap.md`). Paired per-seed exploitability against the causal monitor:
+
+```
+lever    mean     per-seed                                        separated?
+causal   -0.323   [-0.553, -0.333, -0.053, -0.173, -0.503]        YES, 5/5
+gen8     -0.116   [-0.023, -0.170, -0.230, -0.087, -0.070]        YES, 5/5
+dense    +0.039   [-0.063, -0.290, +0.277, +0.090, +0.183]        no, sign flips
+pfsp     +0.051   [+0.097, +0.020, -0.060, +0.080, +0.120]        no, sign flips
+```
+
+**Given the same hand-engineered causal features the CASPIAN-style baseline uses, the
+co-evolved defender becomes less exploitable than that baseline on every seed** —
+0.313 +/- 0.199 vs 0.636 +/- 0.081. TPR@5%FPR rises to 0.697 and the seed spread narrows.
+Training for more generations helps too, more modestly and also 5/5.
+
+We do **not** claim causal features beat plain `arena_blue`: that comparison sign-flips at
+seed 2 despite a -0.253 mean, so it is not banked. Dense flag credit and PFSP league
+sampling both moved the mean the wrong way; neither becomes a default.
+
+The diagnosis this supports is that the gap was **representational, not a failure of
+co-evolution**. The GRU could not recover `sensitive_read_before_sink` from raw call rows
+at this scale. Handed the feature, the co-evolved policy overtakes the baseline built
+around it — while keeping the adaptive-attacker robustness that baseline lacks.
 
 ### 4.5 Transfer to LLM-planned attacks (M10)
 

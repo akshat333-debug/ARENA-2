@@ -1,0 +1,261 @@
+{
+  "config": "small",
+  "label": "pfsp",
+  "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "aggregate": [
+    {
+      "name": "single_shot",
+      "n_seeds": 5,
+      "auroc_mean": 0.7256,
+      "tpr_at_5pct_fpr_mean": 0.1603,
+      "exploitability_mean": 0.508,
+      "operating_fpr_mean": 0.039,
+      "fresh_red_start_mean": 0.068,
+      "auroc_std": 0.0059,
+      "tpr_at_5pct_fpr_std": 0.0205,
+      "exploitability_std": 0.0977,
+      "operating_fpr_std": 0.0085,
+      "fresh_red_start_std": 0.0212
+    },
+    {
+      "name": "causal_monitor",
+      "n_seeds": 5,
+      "auroc_mean": 0.9749,
+      "tpr_at_5pct_fpr_mean": 0.8324,
+      "exploitability_mean": 0.636,
+      "operating_fpr_mean": 0.0467,
+      "fresh_red_start_mean": 0.0893,
+      "auroc_std": 0.0074,
+      "tpr_at_5pct_fpr_std": 0.1655,
+      "exploitability_std": 0.0813,
+      "operating_fpr_std": 0.0047,
+      "fresh_red_start_std": 0.0217
+    },
+    {
+      "name": "arena_blue",
+      "n_seeds": 5,
+      "auroc_mean": 0.9327,
+      "tpr_at_5pct_fpr_mean": 0.5905,
+      "exploitability_mean": 0.6873,
+      "operating_fpr_mean": 0.0276,
+      "fresh_red_start_mean": 0.114,
+      "auroc_std": 0.0499,
+      "tpr_at_5pct_fpr_std": 0.2398,
+      "exploitability_std": 0.1264,
+      "operating_fpr_std": 0.0356,
+      "fresh_red_start_std": 0.0191
+    },
+    {
+      "name": "static_allowlist",
+      "n_seeds": 5,
+      "auroc_mean": 0.5062,
+      "tpr_at_5pct_fpr_mean": 0.0235,
+      "exploitability_mean": 0.7833,
+      "operating_fpr_mean": 0.0111,
+      "fresh_red_start_mean": 0.176,
+      "auroc_std": 0.0059,
+      "tpr_at_5pct_fpr_std": 0.009,
+      "exploitability_std": 0.0237,
+      "operating_fpr_std": 0.0034,
+      "fresh_red_start_std": 0.0247
+    }
+  ],
+  "per_seed": {
+    "0": [
+      {
+        "name": "single_shot",
+        "auroc": 0.7185,
+        "tpr_at_5pct_fpr": 0.1793,
+        "exploitability": 0.4367,
+        "fresh_red_start": 0.06,
+        "operating_fpr": 0.0489,
+        "n_decisions": 2274
+      },
+      {
+        "name": "causal_monitor",
+        "auroc": 0.978,
+        "tpr_at_5pct_fpr": 0.8608,
+        "exploitability": 0.69,
+        "fresh_red_start": 0.09,
+        "operating_fpr": 0.04,
+        "n_decisions": 2274
+      },
+      {
+        "name": "static_allowlist",
+        "auroc": 0.5135,
+        "tpr_at_5pct_fpr": 0.0338,
+        "exploitability": 0.7767,
+        "fresh_red_start": 0.1833,
+        "operating_fpr": 0.0067,
+        "n_decisions": 2274
+      },
+      {
+        "name": "arena_blue",
+        "auroc": 0.9123,
+        "tpr_at_5pct_fpr": 0.4114,
+        "exploitability": 0.7867,
+        "fresh_red_start": 0.1333,
+        "operating_fpr": 0.0411,
+        "n_decisions": 2274
+      }
+    ],
+    "1": [
+      {
+        "name": "single_shot",
+        "auroc": 0.7267,
+        "tpr_at_5pct_fpr": 0.1263,
+        "exploitability": 0.6667,
+        "fresh_red_start": 0.0933,
+        "operating_fpr": 0.0267,
+        "n_decisions": 2283
+      },
+      {
+        "name": "causal_monitor",
+        "auroc": 0.9748,
+        "tpr_at_5pct_fpr": 0.882,
+        "exploitability": 0.7167,
+        "fresh_red_start": 0.1167,
+        "operating_fpr": 0.05,
+        "n_decisions": 2283
+      },
+      {
+        "name": "arena_blue",
+        "auroc": 0.9719,
+        "tpr_at_5pct_fpr": 0.7764,
+        "exploitability": 0.7367,
+        "fresh_red_start": 0.12,
+        "operating_fpr": 0.0039,
+        "n_decisions": 2283
+      },
+      {
+        "name": "static_allowlist",
+        "auroc": 0.5103,
+        "tpr_at_5pct_fpr": 0.0311,
+        "exploitability": 0.76,
+        "fresh_red_start": 0.17,
+        "operating_fpr": 0.0106,
+        "n_decisions": 2283
+      }
+    ],
+    "2": [
+      {
+        "name": "single_shot",
+        "auroc": 0.7339,
+        "tpr_at_5pct_fpr": 0.1607,
+        "exploitability": 0.4267,
+        "fresh_red_start": 0.0433,
+        "operating_fpr": 0.0439,
+        "n_decisions": 2273
+      },
+      {
+        "name": "arena_blue",
+        "auroc": 0.9505,
+        "tpr_at_5pct_fpr": 0.666,
+        "exploitability": 0.47,
+        "fresh_red_start": 0.0833,
+        "operating_fpr": 0.0033,
+        "n_decisions": 2273
+      },
+      {
+        "name": "causal_monitor",
+        "auroc": 0.9784,
+        "tpr_at_5pct_fpr": 0.9493,
+        "exploitability": 0.53,
+        "fresh_red_start": 0.0733,
+        "operating_fpr": 0.05,
+        "n_decisions": 2273
+      },
+      {
+        "name": "static_allowlist",
+        "auroc": 0.5005,
+        "tpr_at_5pct_fpr": 0.0127,
+        "exploitability": 0.78,
+        "fresh_red_start": 0.2133,
+        "operating_fpr": 0.0117,
+        "n_decisions": 2273
+      }
+    ],
+    "3": [
+      {
+        "name": "single_shot",
+        "auroc": 0.7272,
+        "tpr_at_5pct_fpr": 0.1621,
+        "exploitability": 0.48,
+        "fresh_red_start": 0.0567,
+        "operating_fpr": 0.035,
+        "n_decisions": 2275
+      },
+      {
+        "name": "causal_monitor",
+        "auroc": 0.9622,
+        "tpr_at_5pct_fpr": 0.5432,
+        "exploitability": 0.6733,
+        "fresh_red_start": 0.1033,
+        "operating_fpr": 0.05,
+        "n_decisions": 2275
+      },
+      {
+        "name": "arena_blue",
+        "auroc": 0.8552,
+        "tpr_at_5pct_fpr": 0.2716,
+        "exploitability": 0.7533,
+        "fresh_red_start": 0.11,
+        "operating_fpr": 0.0844,
+        "n_decisions": 2275
+      },
+      {
+        "name": "static_allowlist",
+        "auroc": 0.5063,
+        "tpr_at_5pct_fpr": 0.0232,
+        "exploitability": 0.8233,
+        "fresh_red_start": 0.1467,
+        "operating_fpr": 0.0106,
+        "n_decisions": 2275
+      }
+    ],
+    "4": [
+      {
+        "name": "single_shot",
+        "auroc": 0.7218,
+        "tpr_at_5pct_fpr": 0.1729,
+        "exploitability": 0.53,
+        "fresh_red_start": 0.0867,
+        "operating_fpr": 0.0406,
+        "n_decisions": 2280
+      },
+      {
+        "name": "causal_monitor",
+        "auroc": 0.981,
+        "tpr_at_5pct_fpr": 0.9271,
+        "exploitability": 0.57,
+        "fresh_red_start": 0.0633,
+        "operating_fpr": 0.0433,
+        "n_decisions": 2280
+      },
+      {
+        "name": "arena_blue",
+        "auroc": 0.9735,
+        "tpr_at_5pct_fpr": 0.8271,
+        "exploitability": 0.69,
+        "fresh_red_start": 0.1233,
+        "operating_fpr": 0.005,
+        "n_decisions": 2280
+      },
+      {
+        "name": "static_allowlist",
+        "auroc": 0.5003,
+        "tpr_at_5pct_fpr": 0.0167,
+        "exploitability": 0.7767,
+        "fresh_red_start": 0.1667,
+        "operating_fpr": 0.0161,
+        "n_decisions": 2280
+      }
+    ]
+  }
+}
