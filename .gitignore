@@ -20,3 +20,6 @@ checkpoints/
 .venv/
 venv/
 .env
+
+# long-running experiment outputs (regenerate with scripts/run_multiseed.py)
+report/paper_run/

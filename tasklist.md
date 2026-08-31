@@ -16,14 +16,13 @@ inside a simulated MCP tool-calling environment. Primary metric is **exploitabil
 
 ## 0. ⚠️ Repo state right now
 
-```
-f5faf63 fix(audit): scale paper.yaml for real; add cross-module contract tests   <-- committed, NOT pushed
-55fed0c fix(audit): three measurement-path bugs; withdraw the M8 headline result  <-- pushed
-24f8938 feat(m9): public-dataset fetch + Toucan benign-traffic profile           <-- pushed
-```
+**All 11 modules (M1–M11) are built, audited and merged to `main`.** The `dev`
+branch carrying M10+M11 was reviewed, fixed and fast-forwarded in.
 
-`git status` shows **`main ahead 1`**. Commit `f5faf63` is local only. First thing:
-review it, then `git push origin main`. Nothing else is uncommitted.
+The substantive open problem is no longer "close the exploitability gap" — the
+5-seed run showed that gap was never established. It is **reduce the co-evolved
+defender's seed variance**. Read [`docs/m11-multiseed.md`](docs/m11-multiseed.md)
+before touching anything in `arena/selfplay.py` or `arena/eval/`.
 
 ---
 
