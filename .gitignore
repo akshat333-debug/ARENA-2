@@ -27,3 +27,6 @@ report/paper_run/
 # frontend build artifacts
 frontend/node_modules/
 frontend/dist/
+
+# claude code local settings (keep launch.json shared)
+.claude/settings.local.json
