@@ -13,12 +13,18 @@ ARENA measures what happens when the attacker learns too, reporting **exploitabi
 best-response attack success against a frozen defender — as the primary metric.
 
 We implement a self-play RL arena where a Red (attacker) and Blue (defender) co-evolve inside a
-simulated MCP tool-calling environment. At `small.yaml` scale (the default, laptop-feasible
-configuration), we find that co-evolution **does not** beat static baselines on exploitability.
-The causal monitor (hand-engineered, CASPIAN-style) achieves exploitability 0.69, while the
-co-evolved Blue achieves 0.78. This honest result quantifies the open problem: co-evolution at
-small scale is insufficient to close the gap, and the contribution is the *benchmarking framework*
-that makes this measurement possible.
+simulated MCP tool-calling environment. Over 5 seeds at `small.yaml` scale (the default,
+laptop-feasible configuration), the co-evolved defender and the strongest hand-engineered
+baseline are **statistically indistinguishable** on exploitability (0.565 +/- 0.274 vs
+0.636 +/- 0.081); the sign of the difference flips across seeds. What *is* seed-stable is
+that both beat the static allow-list, whose 0.783 reproduces TAMAS's reported ~80% failure.
+
+The substantive finding is about **variance, not means**: the co-evolved defender's
+exploitability spread is an order of magnitude wider than any static baseline's. Same loop,
+same config, same budget, different seed — anywhere from clearly better to clearly worse.
+The open problem is therefore not that co-evolution produces a *worse* defender but that it
+produces an *unreliable* one, and the contribution is the benchmarking framework that makes
+that measurable at all.
 
 ## 1. Introduction
 
@@ -122,11 +128,38 @@ Separately tested (M5 integration):
 - The league prevents the M6 drift: quarantine rate stays ~0.5+ where the leagueless loop
   collapses to ~0.01.
 
-### 4.4 The Honest Reading
+### 4.4 The Honest Reading — and a second correction
 
-The gap is specifically **robustness to a fresh best response** — which is exactly the
-static-vs-adversarial-evaluation gap this project exists to measure, now pointing at our own
-method. This is a result, not a failure; it is just not the result previously claimed.
+Sections 4.1–4.3 report a **single seed**. Repeating the whole leaderboard over 5 seeds,
+with a fresh self-play Blue trained per seed, does not support the reading that co-evolution
+loses (`docs/m11-multiseed.md`):
+
+```
+defender                       AUROC       TPR@5%FPR    exploitability
+----------------------------------------------------------------------
+single_shot            0.726+/-0.006   0.160+/-0.020     0.508+/-0.098
+arena_blue             0.933+/-0.041   0.572+/-0.213     0.565+/-0.274
+causal_monitor         0.975+/-0.007   0.832+/-0.165     0.636+/-0.081
+static_allowlist       0.506+/-0.006   0.023+/-0.009     0.783+/-0.024
+```
+
+Paired per-seed, `arena_blue - causal_monitor` on exploitability is
+`[+0.090, -0.007, -0.203, +0.123, -0.357]` — mean -0.071, spread 0.204, **sign flips**.
+Three seeds favour the co-evolved defender, two the causal monitor.
+
+So the single-seed claim in §4.1 (`arena_blue` 0.780 vs 0.690, "the most exploitable row")
+is withdrawn, exactly as the M8 claim before it was. It was noise. The mean in the 5-seed
+table now leans the other way, and that is **also** not a result — it is inside the same
+noise, and we decline to bank it.
+
+What survives 5/5 seeds: the causal monitor beats the static allow-list (mean -0.147,
+spread 0.085, every seed agreeing).
+
+**The real finding is variance.** `arena_blue`'s exploitability spread is +/-0.274 against
++/-0.081 and +/-0.024 for the baselines, and +/-0.213 vs +/-0.009 on TPR@5%FPR. The open
+problem is not that co-evolution yields a worse defender; it is that it yields an
+*unreliable* one. That is a sharper and more actionable statement than the gap it replaces,
+and it re-points the future work in §7 at reducing spread rather than chasing a mean.
 
 ### 4.5 Transfer to LLM-planned attacks (M10)
 
@@ -197,15 +230,17 @@ bugs lived. Mutation-checked: reintroducing bug 1 fails immediately.
 
 ## 7. Future Work
 
-1. **Scale up**: run `paper.yaml` end-to-end on real compute. This is the first lever for
-   closing the exploitability gap.
+1. **Scale up**: run `paper.yaml` end-to-end on real compute. Now aimed at *reducing seed
+   variance* (§4.4), which is the open problem, rather than at closing a mean gap that the
+   multi-seed run shows is not established.
 2. **More generations**: push to 12–20 at `small.yaml` to test if the flat curve is a
    budget artifact.
 3. **PFSP league sampling**: use the stored `opponent_win_rate` per checkpoint.
 4. **Denser Blue reward**: shaped per-step signal instead of sparse episode-level.
 5. **Give Blue causal features**: the causal_monitor wins because its hand-engineered feature
    ~encodes the taint rule. Feed `sequence_features` into BluePolicy alongside the GRU.
-6. **Multi-seed evaluation**: ≥3 seeds, report mean ± spread.
+6. ~~**Multi-seed evaluation**~~ — done (§4.4, `arena/eval/multiseed.py`). It overturned the
+   single-seed reading and should be run before any future claim.
 
 ## 8. Reproducibility
 

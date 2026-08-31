@@ -19,6 +19,7 @@ attacks that *don't even adapt*. ARENA measures what happens when the attacker l
 | [architecture.md](architecture.md) | Tech stack, env design, anti-leakage rule, module layout |
 | [modular-plan.md](modular-plan.md) | M1–M11 build order and per-module test gates |
 | [docs/audit-m1-m9.md](docs/audit-m1-m9.md) | **Full audit — 3 bugs found, and the corrected headline result** |
+| [docs/m11-multiseed.md](docs/m11-multiseed.md) | **5-seed repeat — the single-seed headline does not survive; the finding is variance** |
 
 ## Status
 

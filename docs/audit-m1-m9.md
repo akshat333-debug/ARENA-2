@@ -224,6 +224,25 @@ measured.
 - Every metric in `eval/metrics.py` re-verified exact against `sklearn.metrics`.
 - Both configs load and train end-to-end.
 
+## Superseded: this audit's own replacement claim was also one seed
+
+The audit withdrew M8's "~3x less exploitable" and replaced it with
+`arena_blue` 0.780 vs `causal_monitor` 0.690 — "at small.yaml scale,
+co-evolution does NOT beat the static baselines".
+
+That replacement was itself a **single seed**, and a 5-seed repeat does not
+support it (`docs/m11-multiseed.md`). Paired per-seed, the difference is
+`[+0.090, -0.007, -0.203, +0.123, -0.357]` — mean -0.071, spread 0.204, sign
+flipping. Three of five seeds favour the co-evolved defender.
+
+So the correct statement is neither "co-evolution loses" nor "co-evolution
+wins": **the comparison is unresolved at this scale**, and `arena_blue`'s seed
+variance (+/-0.274) is an order of magnitude larger than any static baseline's.
+What survives 5/5 seeds is that the causal monitor beats the allow-list.
+
+Recorded here rather than quietly edited above: the fix for a
+single-seed claim is not a better single-seed claim.
+
 ## What was *not* re-measured
 
 Stated so nothing here is mistaken for a verified number:

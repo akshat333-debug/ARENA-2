@@ -43,9 +43,40 @@ def main() -> None:
     ap.add_argument("--no-arena-blue", action="store_true",
                     help="baselines only (skips per-seed self-play training)")
     ap.add_argument("--out", type=str, default=None, help="write results JSON here")
+    ap.add_argument("--dense-flag-credit", action="store_true",
+                    help="lever: coverage-proportional Blue flag reward")
+    ap.add_argument("--causal-features", action="store_true",
+                    help="lever: feed sequence_features into BluePolicy")
+    ap.add_argument("--pfsp", action="store_true",
+                    help="lever: prioritised league sampling")
+    ap.add_argument("--label", type=str, default=None, help="name for this run in the output")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
+
+    # Levers are config-only by construction (project.md S10) — applying them
+    # here rather than editing YAML keeps one code path for every arm.
+    updates = {}
+    if args.dense_flag_credit:
+        updates["reward"] = cfg.reward.model_copy(update={"dense_flag_credit": True})
+    if args.causal_features:
+        updates["policy"] = cfg.policy.model_copy(update={"blue_causal_features": True})
+    sp_up = {}
+    if args.pfsp:
+        sp_up["league_pfsp"] = True
+    if args.generations is not None:
+        sp_up["n_generations"] = args.generations
+    if args.steps is not None:
+        sp_up["steps_per_side"] = args.steps
+    if sp_up:
+        updates["selfplay"] = cfg.selfplay.model_copy(update=sp_up)
+    if updates:
+        cfg = cfg.model_copy(update=updates)
+
+    label = args.label or "+".join(
+        [k for k, v in (("dense", args.dense_flag_credit), ("causal", args.causal_features),
+                        ("pfsp", args.pfsp)) if v]
+    ) or "baseline"
     t0 = time.time()
 
     def build(seed: int) -> dict:
@@ -58,18 +89,17 @@ def main() -> None:
         if not args.no_arena_blue:
             print(f"  [seed {seed}] training self-play Blue...", flush=True)
             sp = SelfPlayTrainer(cfg, seed=seed)
-            if args.steps is not None:
-                sp.cfg = cfg.model_copy(update={
-                    "selfplay": cfg.selfplay.model_copy(update={"steps_per_side": args.steps})
-                })
-            sp.train(args.generations)
+            sp.train()
             d["arena_blue"] = sp.blue
         return d
 
     def progress(seed, rows):
         print(f"  [seed {seed}] done ({time.time() - t0:.0f}s)", flush=True)
 
-    print(f"=== multi-seed leaderboard: {cfg.name}, seeds={args.seeds} ===", flush=True)
+    print(f"=== multi-seed leaderboard: {cfg.name} [{label}], seeds={args.seeds} ===", flush=True)
+    print(f"    generations={cfg.selfplay.n_generations} steps/side={cfg.selfplay.steps_per_side} "
+          f"dense_flag={cfg.reward.dense_flag_credit} causal={cfg.policy.blue_causal_features} "
+          f"pfsp={cfg.selfplay.league_pfsp}", flush=True)
     agg, per_seed = multiseed_leaderboard(
         build, cfg, seeds=args.seeds,
         n_decision_adv=args.decisions, n_decision_benign=args.decisions,
@@ -98,6 +128,7 @@ def main() -> None:
     if args.out:
         out = {
             "config": cfg.name,
+            "label": label,
             "seeds": args.seeds,
             "aggregate": [r.as_dict() for r in agg],
             "per_seed": {

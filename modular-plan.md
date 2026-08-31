@@ -51,7 +51,7 @@ New `tests/test_contracts.py` (10 tests) covers the module **hand-offs** — whe
 all three measurement bugs lived and where nothing was testing. Mutation-checked:
 reintroducing bug 1 fails it immediately.
 
-**Consequence:** the M8 headline ("~3× less exploitable than the strongest static
+**Consequence (superseded — see `docs/m11-multiseed.md`; this replacement claim was also one seed and does not survive 5):** the M8 headline ("~3× less exploitable than the strongest static
 baseline") was an artifact and is withdrawn. Re-measured, `arena_blue`
 exploitability is **0.780** vs the causal monitor's **0.690**, and the
 generation curve is flat. Closing that gap is now the substantive open problem
