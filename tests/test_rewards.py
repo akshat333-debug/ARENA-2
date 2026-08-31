@@ -151,3 +151,70 @@ def test_heuristic_plausibility_is_monotone_in_risky_fraction():
 
 def test_heuristic_plausibility_empty_sequence():
     assert heuristic_plausibility([]) == 1.0
+
+
+# ---------------------------------------------------------------------------
+# dense_flag_credit (M11 future-work #4) — coverage-proportional flag reward
+# ---------------------------------------------------------------------------
+
+
+def _flagged(flags, malicious=(0, 1, 2)):
+    return EpisodeOutcome(
+        is_adversarial=True, objective_completed=False, n_steps=4, plausibility=1.0,
+        quarantined=True, quarantine_step=3, flagged_steps=flags,
+        malicious_steps=malicious, caught_in_flight=True,
+    )
+
+
+def test_flat_flag_credit_is_the_default_and_is_binary():
+    w = RewardConfig()
+    assert w.dense_flag_credit is False
+    one = compute_rewards(_flagged((0,)), w).blue_flag
+    all3 = compute_rewards(_flagged((0, 1, 2)), w).blue_flag
+    assert one == all3 == w.w_flag
+
+
+def test_dense_flag_credit_is_monotone_in_chain_coverage():
+    """The reason this exists: with flat credit the marginal value of a second
+    correct flag is zero while a wrong flag still costs, so Blue's cheapest
+    policy is to flag once and stop looking."""
+    w = RewardConfig(dense_flag_credit=True)
+    vals = [compute_rewards(_flagged(f), w).blue_flag for f in [(0,), (0, 1), (0, 1, 2)]]
+    assert vals == sorted(vals) and vals[0] < vals[-1]
+    assert vals == pytest.approx([w.w_flag / 3, 2 * w.w_flag / 3, w.w_flag])
+
+
+def test_dense_flag_credit_is_capped_at_w_flag():
+    w = RewardConfig(dense_flag_credit=True)
+    # every malicious step flagged, plus the cap cannot be exceeded
+    assert compute_rewards(_flagged((0, 1, 2)), w).blue_flag == pytest.approx(w.w_flag)
+
+
+def test_dense_flag_credit_still_charges_for_off_chain_flags():
+    w = RewardConfig(dense_flag_credit=True)
+    rb = compute_rewards(_flagged((0, 7, 8)), w)
+    assert rb.blue_flag == pytest.approx(w.w_flag / 3)
+    assert rb.blue_false_flag == pytest.approx(2 * w.w_false_flag)
+
+
+def test_dense_flag_credit_preserves_the_degenerate_defender_tie():
+    """The invariant the whole reward design rests on: quarantine-always and
+    allow-always must score exactly equally badly, or the trivial strategy wins.
+    Flags do not enter it (neither degenerate policy flags), but assert it under
+    the new mode rather than assuming."""
+    for w in (RewardConfig(), RewardConfig(dense_flag_credit=True)):
+        p = 0.5
+        quarantine_always = p * w.w_detect - (1 - p) * w.w_false_quarantine
+        allow_always = -p * w.w_miss
+        assert quarantine_always == pytest.approx(allow_always)
+
+
+def test_dense_flag_credit_with_no_malicious_steps_does_not_divide_by_zero():
+    w = RewardConfig(dense_flag_credit=True)
+    o = EpisodeOutcome(
+        is_adversarial=True, objective_completed=False, n_steps=2, plausibility=1.0,
+        quarantined=True, quarantine_step=1, flagged_steps=(0,), malicious_steps=(),
+    )
+    rb = compute_rewards(o, w)
+    assert rb.blue_flag == 0.0
+    assert rb.blue_false_flag == pytest.approx(w.w_false_flag)

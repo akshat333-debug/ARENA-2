@@ -9,7 +9,8 @@ policy imports makes the reward logic unit-testable on hand-built outcomes.
            - w_step * n_steps
 
     R_blue = + w_detect             [caught an in-flight attack: see below]
-             + w_flag               [flagged a call genuinely on the attack chain]
+             + w_flag               [flagged a call genuinely on the attack chain;
+                                     scaled by chain coverage if dense_flag_credit]
              - w_miss               [objective completed undetected]
              - w_false_quarantine   [quarantined a benign session]
              - w_false_flag * k     [k flags that were not on the attack chain]
@@ -109,7 +110,11 @@ def compute_rewards(outcome: EpisodeOutcome, w: RewardConfig) -> RewardBreakdown
         if outcome.quarantined and not outcome.objective_completed and outcome.caught_in_flight:
             blue_detect = w.w_detect
         if on_chain_flags:
-            blue_flag = w.w_flag
+            if w.dense_flag_credit and malicious:
+                # Monotone in how much of the chain Blue caught, capped at w_flag.
+                blue_flag = w.w_flag * min(1.0, len(on_chain_flags) / len(malicious))
+            else:
+                blue_flag = w.w_flag
         if outcome.objective_completed:
             blue_miss = w.w_miss
     else:
