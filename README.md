@@ -59,6 +59,20 @@ so an LLM payload appended to the task text is invisible to every defender and m
 nothing. See [docs/m10-llm.md](docs/m10-llm.md). Without Ollama the sweep runs the scripted
 arm alone and says so; `ollama pull qwen2.5:3b` enables the held-out arm.
 
+## Console (frontend)
+
+A landing page plus an operator console that runs the benchmark interactively —
+two-player Red vs Blue, a live pipeline view, evidence ledger and metrics.
+
+```bash
+cd frontend && npm install && npm run dev
+```
+
+The simulation engine is a TypeScript mirror of `arena/` (taint tracker, reward
+engine, all three baselines), so it runs **entirely offline** — no backend, no
+network. See [frontend/README.md](frontend/README.md). An optional
+`scripts/serve_api.py` bridge enables Live Mode against the real Python.
+
 ## Install
 
 ```bash

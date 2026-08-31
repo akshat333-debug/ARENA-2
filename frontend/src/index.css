@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root { color-scheme: dark; }
+  html, body, #root { height: 100%; }
+  body {
+    @apply bg-ink-950 text-ink-100 antialiased;
+    font-feature-settings: "cv02","cv03","cv04","ss01";
+  }
+  ::selection { background: #3DD8E840; }
+  /* Tabular figures everywhere numbers matter — metrics must not jitter. */
+  .tnum { font-variant-numeric: tabular-nums; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { @apply bg-ink-700 rounded-full border-2 border-solid; border-color: transparent; background-clip: padding-box; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-ink-600; }
+}
+
+@layer components {
+  .panel { @apply bg-ink-900 border border-ink-700/70 rounded-xl; }
+  .panel-tight { @apply bg-ink-900 border border-ink-700/70 rounded-lg; }
+  .label { @apply text-2xs uppercase tracking-[0.14em] text-ink-400 font-medium; }
+  .hairline { @apply border-ink-700/60; }
+  .grid-bg {
+    background-image:
+      linear-gradient(to right, rgba(255,255,255,.028) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255,255,255,.028) 1px, transparent 1px);
+    background-size: 44px 44px;
+  }
+  .focus-ring { @apply outline-none focus-visible:ring-2 focus-visible:ring-blue/60 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-950; }
+}
