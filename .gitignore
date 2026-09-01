@@ -30,3 +30,10 @@ frontend/dist/
 
 # claude code local settings (keep launch.json shared)
 .claude/settings.local.json
+
+# presentation build artifacts (keep the generator + the deck)
+presentation/node_modules/
+presentation/slide-*.png
+presentation/ql/
+presentation/*.scpt
+presentation/package-lock.json
