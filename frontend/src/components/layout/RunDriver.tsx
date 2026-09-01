@@ -21,7 +21,11 @@ export function RunDriver() {
     if (runState !== "running" || !episode) return;
 
     // Episode finished: roll the next one so a presenter can leave it running.
+    // Not when a human is playing, though — rolling on a timer yanks the
+    // scoreboard and the ground-truth reveal off screen before they can read
+    // the outcome of the move they just made.
     if (episode.ended) {
+      if (redControl === "human" || blueControl === "human") return;
       const id = setTimeout(() => {
         useStore.getState().newEpisode();
         useStore.getState().run();

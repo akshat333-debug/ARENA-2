@@ -249,7 +249,10 @@ export const useStore = create<State>((set, get) => ({
         `episode ended — ${ep.endReason}; R_red ${b.rRed.toFixed(2)} / R_blue ${b.rBlue.toFixed(2)}`);
       if (o.objectiveCompleted) st.log("error", "taint", `ATTACK COMPLETED via ${ep.tracker.satisfyingEvent(ep.scenario.objective)?.tool}`);
       set((s2) => ({
-        runState: "done",
+        // Autoplay owns the run state: clobbering it with "done" here stopped
+        // RunDriver's roll-to-next-episode branch, so "Run Demo" advanced
+        // exactly one episode and then sat still.
+        runState: s2.runState === "running" ? "running" : "done",
         rev: s2.rev + 1,
         episodeCount: s2.episodeCount + 1,
         history: [...s2.history, {
