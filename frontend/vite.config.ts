@@ -7,5 +7,6 @@ export default defineConfig({
   plugins: [react()],
   base: "./",
   build: { outDir: "dist", assetsInlineLimit: 4096 },
-  server: { port: 5173 },
+  // honour the harness-assigned port (autoPort) when present, else 5173
+  server: { port: Number(process.env.PORT) || 5173 },
 });
