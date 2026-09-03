@@ -8,14 +8,17 @@ export function Sparkline({ data, tone = "#3DD8E8", height = 32, fill = true }: 
   data: number[]; tone?: string; height?: number; fill?: boolean;
 }) {
   const d = useMemo(() => {
-    if (data.length < 2) return null;
+    if (data.length === 0) return null;
     const min = Math.min(...data), max = Math.max(...data);
     const span = max - min || 1;
+    // One point still plots — as a flat mark at mid-height. Reporting "no data
+    // yet" next to a panel that says "1 episode(s) this session" reads as a bug.
     const pts = data.map((v, i) => [
-      (i / (data.length - 1)) * 100,
-      100 - ((v - min) / span) * 100,
+      data.length === 1 ? 50 : (i / (data.length - 1)) * 100,
+      data.length === 1 ? 50 : 100 - ((v - min) / span) * 100,
     ]);
     return {
+      single: data.length === 1,
       line: pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(2)},${p[1].toFixed(2)}`).join(" "),
       area: `M0,100 L${pts.map((p) => `${p[0].toFixed(2)},${p[1].toFixed(2)}`).join(" L")} L100,100 Z`,
     };
@@ -30,9 +33,12 @@ export function Sparkline({ data, tone = "#3DD8E8", height = 32, fill = true }: 
           <stop offset="100%" stopColor={tone} stopOpacity="0" />
         </linearGradient>
       </defs>
-      {fill && <path d={d.area} fill={`url(#${id})`} />}
-      <path d={d.line} fill="none" stroke={tone} strokeWidth="1.6" vectorEffect="non-scaling-stroke"
-        strokeLinejoin="round" strokeLinecap="round" />
+      {fill && !d.single && <path d={d.area} fill={`url(#${id})`} />}
+      {d.single
+        // a zero-length path is not reliably stroked across browsers
+        ? <circle cx="50" cy="50" r="2.5" fill={tone} vectorEffect="non-scaling-stroke" />
+        : <path d={d.line} fill="none" stroke={tone} strokeWidth="1.6" vectorEffect="non-scaling-stroke"
+            strokeLinejoin="round" strokeLinecap="round" />}
     </svg>
   );
 }

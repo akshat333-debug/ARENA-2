@@ -1,8 +1,8 @@
 import { ReactNode, useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
-  Activity, AlertTriangle, Boxes, Database, FileBarChart,
-  LayoutDashboard, Play, RotateCcw, ScrollText, Settings2, Shield, Swords, Workflow, X,
+  Activity, AlertTriangle, Database, FileBarChart,
+  LayoutDashboard, Menu, Play, RotateCcw, ScrollText, Settings2, Shield, Swords, Workflow, X,
 } from "lucide-react";
 import { useStore, PRESETS } from "../../store/useStore";
 import { Badge, Button, Dot } from "../ui";
@@ -110,7 +110,7 @@ export function Shell({ children }: { children: ReactNode }) {
       {/* Main */}
       <div className="flex-1 min-w-0 flex flex-col">
         <header className="h-14 shrink-0 border-b hairline bg-ink-900/80 backdrop-blur px-4 flex items-center gap-3">
-          <button className="lg:hidden text-ink-300" onClick={() => setOpen(true)}><Boxes className="h-5 w-5" /></button>
+          <button className="lg:hidden text-ink-300" onClick={() => setOpen(true)} aria-label="Open navigation"><Menu className="h-5 w-5" /></button>
           <div className="min-w-0 flex items-center gap-2.5">
             <span className="text-sm font-medium truncate">{scenario?.id ?? "No episode"}</span>
             {scenario && (

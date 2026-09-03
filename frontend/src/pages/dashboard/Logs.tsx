@@ -33,8 +33,9 @@ export default function Logs() {
   };
 
   return (
-    <div className="p-4 lg:p-5">
+    <div className="h-full p-4 lg:p-5 flex flex-col min-h-0">
       <Panel
+        className="flex-1 min-h-0"
         title="Execution monitor"
         subtitle="Generated as the pipeline runs. Nothing here is pre-written."
         actions={<>
@@ -50,8 +51,8 @@ export default function Logs() {
             <Download className="h-3 w-3" />
           </Button>
         </>}
-        bodyClass="p-0">
-        <div className="px-4 py-2 border-b hairline flex items-center gap-3 text-2xs text-ink-500">
+        bodyClass="p-0 flex flex-col">
+        <div className="shrink-0 px-4 py-2 border-b hairline flex items-center gap-3 text-2xs text-ink-500">
           <span className="tnum">{rows.length} line(s)</span>
           {(["info", "ok", "warn", "error", "debug"] as LogLevel[]).map((lv) => {
             const n = s.logs.filter((l) => l.level === lv).length;
@@ -70,12 +71,12 @@ export default function Logs() {
               const el = e.currentTarget;
               if (el.scrollHeight - el.scrollTop - el.clientHeight > 40) setFollow(false);
             }}
-            className="h-[calc(100vh-260px)] min-h-[300px] overflow-y-auto bg-ink-950 font-mono text-2xs leading-relaxed p-3">
+            className="flex-1 min-h-[240px] overflow-y-auto bg-ink-950 font-mono text-2xs leading-relaxed p-3">
             {rows.map((l, i) => (
               <div key={i} className="flex gap-3 hover:bg-ink-900/60 px-1 rounded animate-fade-up">
-                <span className="text-ink-600 shrink-0">{clock(l.t)}</span>
+                <span className="hidden sm:inline text-ink-600 shrink-0">{clock(l.t)}</span>
                 <span className={cx("shrink-0 font-semibold", LEVEL_STYLE[l.level].c)}>{LEVEL_STYLE[l.level].t}</span>
-                <span className="text-ink-500 shrink-0 w-16">{l.stage}</span>
+                <span className="hidden sm:inline text-ink-500 shrink-0 w-16">{l.stage}</span>
                 <span className="text-ink-200 break-all">{l.msg}</span>
               </div>
             ))}

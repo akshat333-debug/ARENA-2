@@ -43,11 +43,14 @@ export default function Analysis() {
       const mal = new Set(ep.outcome!.maliciousSteps);
       rows.slice(-ep.history.length).forEach((r, j) => { r.label = mal.has(j) ? 1 : 0; });
     }
-    return ["causal_monitor", "arena_blue", "single_shot", "static_allowlist"].map((id, i) => {
+    // arena_blue_causal is the leaderboard's top row — leaving it out of the live
+    // ROC meant the one defender the report actually claims a win for was the one
+    // curve you could not see.
+    return ["arena_blue_causal", "causal_monitor", "arena_blue", "single_shot", "static_allowlist"].map((id, i) => {
       const sc2 = rows.map((r) => defenderScore(id, r.obs));
       const { points, auc } = rocPoints(sc2, rows.map((r) => r.label));
       return { name: DEFENDERS.find((d) => d.id === id)!.name,
-        color: ["#9B8CFF", "#3DD8E8", "#F2B33D", "#5A6273"][i], points, auc };
+        color: ["#4ADE80", "#9B8CFF", "#3DD8E8", "#F2B33D", "#5A6273"][i], points, auc };
     });
   }, [s.gen, s.weights]);
 
@@ -136,8 +139,16 @@ export default function Analysis() {
       </div>
 
       <div className="grid lg:grid-cols-2 gap-4 items-start">
-        <Panel title="ROC — computed live" subtitle="40 freshly-rolled episodes, scored by each defender. Rank-based AUC.">
+        <Panel title="ROC — computed live"
+          subtitle="40 freshly-rolled episodes, scored per decision on the prefix the defender can actually see. Rank-based AUC, same estimator as arena/eval/metrics.py.">
           <RocCurve curves={roc} />
+          <p className="text-2xs text-ink-500 mt-2.5 leading-relaxed">
+            These sit below the leaderboard&rsquo;s AUROC on purpose. The leaderboard scores a
+            whole episode once, with the chain complete. This scores every call as it lands —
+            including step 0, where a credential read is genuinely indistinguishable from a
+            benign one. Detecting a chain from its first link is the harder question, and it is
+            the one a live guardrail is actually asked.
+          </p>
         </Panel>
 
         <Panel title="Exploitability across self-play generations" subtitle="Does co-evolution actually drive the attack surface down?">

@@ -61,8 +61,9 @@ export default function Evidence() {
   if (!ep) return <div className="p-6"><EmptyState title="No episode loaded" /></div>;
 
   return (
-    <div className="p-4 lg:p-5 space-y-4">
+    <div className="h-full p-4 lg:p-5 flex flex-col gap-4 min-h-0">
       <Panel
+        className="flex-1 min-h-0"
         title="Evidence ledger"
         subtitle={`Every executed call in ${ep.scenario.id}, with its taint state and integrity.`}
         actions={<>
@@ -72,8 +73,8 @@ export default function Evidence() {
           ]} />
           <Button size="sm" variant="secondary" onClick={exportJson}><Download className="h-3 w-3" />Export</Button>
         </>}
-        bodyClass="p-0">
-        <div className="px-4 py-2.5 border-b hairline flex items-center gap-2">
+        bodyClass="p-0 flex flex-col">
+        <div className="shrink-0 px-4 py-2.5 border-b hairline flex items-center gap-2">
           <div className="relative flex-1 max-w-xs">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-ink-500" />
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search tool, id, side effect…"
@@ -95,7 +96,7 @@ export default function Evidence() {
               ? <Button size="sm" onClick={() => { setQ(""); setFilter("all"); }}>Clear filters</Button>
               : <Button size="sm" variant="primary" onClick={() => { s.run(); }}>Run</Button>} />
         ) : (
-          <div className="overflow-x-auto">
+          <div className="flex-1 min-h-0 overflow-auto">
             <table className="w-full text-xs">
               <thead>
                 <tr className="label border-b hairline">
